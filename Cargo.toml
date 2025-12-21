@@ -3,4 +3,33 @@ name = "read_parsing_analysis"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "parser_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "test_binary"
+path = "src/bin/test_binary.rs"
+
+[[bin]]
+name = "test_csv"
+path = "src/bin/test_csv.rs"
+
+[[bin]]
+name = "test_txt"
+path = "src/bin/test_txt.rs"
+
+[[bin]]
+name = "test_mt940"
+path = "src/bin/test_mt940.rs"
+
 [dependencies]
+thiserror = "1.0"
+csv = "1.2"
+serde = { version = "1.0", features = ["derive"] }
+byteorder = "1.4"
+regex = "1.10"
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+tempfile = "3.3"
