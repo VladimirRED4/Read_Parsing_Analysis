@@ -9,7 +9,7 @@ fn main() -> Result<(), parser_lib::ParserError> {
     let csv_data = r#"TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION
 1001,DEPOSIT,0,501,50000,1672531200000,SUCCESS,"Initial account funding"
 1002,TRANSFER,501,502,15000,1672534800000,FAILURE,"Payment for services, invoice #123"
-1003,WITHDRAWAL,502,0,-1000,1672538400000,PENDING,"ATM withdrawal""#;
+1003,WITHDRAWAL,502,0,1000,1672538400000,PENDING,"ATM withdrawal""#;
 
     let cursor = Cursor::new(csv_data);
     let transactions = CsvParser::parse_records(cursor)?;
@@ -90,7 +90,7 @@ fn main() -> Result<(), parser_lib::ParserError> {
             tx_type: TransactionType::Withdrawal,
             from_user_id: 300,
             to_user_id: 0,
-            amount: -25000,
+            amount: 25000, // Положительная сумма для WITHDRAWAL
             timestamp: 1672646400000,
             status: TransactionStatus::Pending,
             description: "Rent payment".to_string(),
@@ -104,6 +104,17 @@ fn main() -> Result<(), parser_lib::ParserError> {
     println!("   Созданный CSV:");
     for line in my_csv.lines() {
         println!("   {}", line);
+    }
+
+    // 6. Парсинг созданного CSV обратно
+    println!("\n6. Парсинг созданного CSV обратно:");
+    let cursor = Cursor::new(my_csv);
+    let parsed_my = CsvParser::parse_records(cursor)?;
+
+    println!("   Распарсено {} транзакций", parsed_my.len());
+    for (i, tx) in parsed_my.iter().enumerate() {
+        println!("   Транзакция {}: ID={}, Тип={:?}, Сумма={}",
+                 i + 1, tx.tx_id, tx.tx_type, tx.amount);
     }
 
     println!("\n=== Все тесты завершены ===");

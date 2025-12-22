@@ -2,13 +2,11 @@ mod error;
 mod binary_format;
 mod csv_format;
 mod txt_format;
-mod mt940_format;
 
 pub use error::ParserError;
 pub use binary_format::{BinaryParser, BinaryRecord};
 pub use csv_format::CsvParser;
 pub use txt_format::TextParser;
-pub use mt940_format::MT940Parser;
 
 use std::io::{Read, Write};
 

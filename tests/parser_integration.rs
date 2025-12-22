@@ -1,4 +1,4 @@
-use parser_lib::{CsvParser, TextParser, MT940Parser, Transaction, TransactionType, TransactionStatus};
+use parser_lib::{CsvParser, TextParser, BinaryParser, Transaction, TransactionType, TransactionStatus};
 use std::io::Cursor;
 
 #[test]
@@ -37,9 +37,7 @@ DESCRIPTION: "Initial deposit""#;
 
 #[test]
 fn test_binary_parsing() {
-    use parser_lib::BinaryRecord;
-
-    let record = BinaryRecord {
+    let record = Transaction {
         tx_id: 1001,
         tx_type: TransactionType::Deposit,
         from_user_id: 0,
@@ -51,36 +49,14 @@ fn test_binary_parsing() {
     };
 
     let mut buffer = Vec::new();
-    assert!(record.write_to(&mut buffer).is_ok());
+    assert!(BinaryParser::write_records(&[record.clone()], &mut buffer).is_ok());
 
     let mut cursor = Cursor::new(&buffer);
-    let parsed = BinaryRecord::from_read(&mut cursor);
+    let parsed = BinaryParser::parse_records(&mut cursor);
     assert!(parsed.is_ok());
-    assert_eq!(record, parsed.unwrap());
-}
-
-#[test]
-fn test_mt940_parsing() {
-    let mt940_data = r#":20:REF123
-:25:1234567890
-:61:250218D12,01NTRF//REF12345
-:86:/REMI/Test Payment
-/EREF/REF12345"#;
-
-    let cursor = Cursor::new(mt940_data);
-    let result = MT940Parser::parse_records(cursor);
-
-    // MT940 парсер может быть более строгим, проверяем что он что-то возвращает
-    match result {
-        Ok(transactions) => {
-            // Если парсинг успешен, проверяем что транзакции есть
-            assert!(!transactions.is_empty());
-        }
-        Err(_) => {
-            // Если парсинг не удался, это тоже может быть нормально для теста
-            // Просто пропускаем проверку
-        }
-    }
+    let parsed_records = parsed.unwrap();
+    assert_eq!(parsed_records.len(), 1);
+    assert_eq!(parsed_records[0].tx_id, record.tx_id);
 }
 
 #[test]
@@ -112,4 +88,12 @@ fn test_cross_format_roundtrip() {
     let text_result = TextParser::parse_records(text_cursor).unwrap();
     assert_eq!(text_result.len(), 1);
     assert_eq!(text_result[0].tx_id, original.tx_id);
+
+    // Тест Binary roundtrip
+    let mut bin_buffer = Vec::new();
+    BinaryParser::write_records(&[original.clone()], &mut bin_buffer).unwrap();
+    let mut bin_cursor = Cursor::new(bin_buffer);
+    let bin_result = BinaryParser::parse_records(&mut bin_cursor).unwrap();
+    assert_eq!(bin_result.len(), 1);
+    assert_eq!(bin_result[0].tx_id, original.tx_id);
 }

@@ -2,10 +2,15 @@
 name = "read_parsing_analysis"
 version = "0.1.0"
 edition = "2024"
+default-run = "ypbank_converter"
 
 [lib]
 name = "parser_lib"
 path = "src/lib.rs"
+
+[[bin]]
+name = "ypbank_converter"
+path = "src/main.rs"
 
 [[bin]]
 name = "test_binary"
@@ -20,16 +25,23 @@ name = "test_txt"
 path = "src/bin/test_txt.rs"
 
 [[bin]]
-name = "test_mt940"
-path = "src/bin/test_mt940.rs"
+name = "comparer"
+path = "src/bin/comparer.rs"
+
+[[bin]]
+name = "debug_binary"
+path = "src/bin/debug_binary.rs"
 
 [dependencies]
 thiserror = "1.0"
-csv = "1.2"
 serde = { version = "1.0", features = ["derive"] }
 byteorder = "1.4"
 regex = "1.10"
 chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.0", features = ["derive"] }
+
 
 [dev-dependencies]
 tempfile = "3.3"
+assert_cmd = "2.0"
+predicates = "3.0"

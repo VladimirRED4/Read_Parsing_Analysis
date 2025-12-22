@@ -114,21 +114,36 @@ impl BinaryRecord {
             reader.read_exact(&mut description_buf)?;
         }
 
-        let description = String::from_utf8(description_buf)
+        let mut description = String::from_utf8(description_buf)
             .map_err(|e| ParserError::Parse(
-                format!("Invalid UTF-8 in description: {}", e)
+            format!("Invalid UTF-8 in description: {}", e)
             ))?;
 
+        // Убираем окружающие кавычки из описания, если они есть
+        description = Self::normalize_description(&description);
+
         Ok(BinaryRecord {
-            tx_id,
-            tx_type,
-            from_user_id,
-            to_user_id,
-            amount,
-            timestamp,
-            status,
-            description,
+        tx_id,
+        tx_type,
+        from_user_id,
+        to_user_id,
+        amount,
+        timestamp,
+        status,
+        description,
         })
+    }
+
+    /// Нормализует описание, убирая лишние окружающие кавычки
+    fn normalize_description(description: &str) -> String {
+        let trimmed = description.trim();
+
+        // Если описание начинается и заканчивается кавычками, убираем их
+        if trimmed.starts_with('"') && trimmed.ends_with('"') {
+            trimmed[1..trimmed.len() - 1].to_string()
+        } else {
+            trimmed.to_string()
+        }
     }
 
     pub fn write_to<W: Write>(&self, writer: &mut W) -> Result<(), ParserError> {

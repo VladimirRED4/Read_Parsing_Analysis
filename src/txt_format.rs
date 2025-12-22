@@ -9,7 +9,7 @@ impl TextParser {
     /// Читает все записи из текстового источника
     pub fn parse_records<R: Read>(reader: R) -> Result<Vec<Transaction>, ParserError> {
         let content = std::io::read_to_string(reader)
-            .map_err(|e| ParserError::Io(e))?;
+            .map_err(ParserError::Io)?;
 
         let mut records = Vec::new();
         let mut current_record: HashMap<String, String> = HashMap::new();
@@ -62,20 +62,20 @@ impl TextParser {
     pub fn write_records<W: Write>(records: &[Transaction], writer: &mut W) -> Result<(), ParserError> {
         for (i, record) in records.iter().enumerate() {
             if i > 0 {
-                writeln!(writer)?; // Пустая строка между записями
+                writeln!(writer).map_err(ParserError::Io)?; // Пустая строка между записями
             }
 
-            writeln!(writer, "# Record {} ({:?})", i + 1, record.tx_type)?;
+            writeln!(writer, "# Record {} ({:?})", i + 1, record.tx_type).map_err(ParserError::Io)?;
 
             // Записываем поля в фиксированном порядке для читаемости
-            writeln!(writer, "TX_ID: {}", record.tx_id)?;
-            writeln!(writer, "TX_TYPE: {}", Self::tx_type_to_str(record.tx_type))?;
-            writeln!(writer, "FROM_USER_ID: {}", record.from_user_id)?;
-            writeln!(writer, "TO_USER_ID: {}", record.to_user_id)?;
-            writeln!(writer, "AMOUNT: {}", record.amount)?;
-            writeln!(writer, "TIMESTAMP: {}", record.timestamp)?;
-            writeln!(writer, "STATUS: {}", Self::status_to_str(record.status))?;
-            writeln!(writer, "DESCRIPTION: \"{}\"", Self::escape_description(&record.description))?;
+            writeln!(writer, "TX_ID: {}", record.tx_id).map_err(ParserError::Io)?;
+            writeln!(writer, "TX_TYPE: {}", Self::tx_type_to_str(record.tx_type)).map_err(ParserError::Io)?;
+            writeln!(writer, "FROM_USER_ID: {}", record.from_user_id).map_err(ParserError::Io)?;
+            writeln!(writer, "TO_USER_ID: {}", record.to_user_id).map_err(ParserError::Io)?;
+            writeln!(writer, "AMOUNT: {}", record.amount).map_err(ParserError::Io)?;
+            writeln!(writer, "TIMESTAMP: {}", record.timestamp).map_err(ParserError::Io)?;
+            writeln!(writer, "STATUS: {}", Self::status_to_str(record.status)).map_err(ParserError::Io)?;
+            writeln!(writer, "DESCRIPTION: \"{}\"", Self::escape_description(&record.description)).map_err(ParserError::Io)?;
         }
 
         Ok(())
@@ -135,7 +135,7 @@ impl TextParser {
             tx_type,
             from_user_id,
             to_user_id,
-            amount,
+            amount, // Всегда положительная сумма в текстовом формате
             timestamp,
             status,
             description,
@@ -153,7 +153,7 @@ impl TextParser {
             ))
     }
 
-    /// Парсит поле типа i64
+    /// Парсит поле типа i64 (всегда положительное в текстовом формате)
     fn parse_i64_field(fields: &HashMap<String, String>, field_name: &str, line_number: usize) -> Result<i64, ParserError> {
         let value = fields.get(field_name)
             .ok_or_else(|| ParserError::Parse(format!("Field {} not found", field_name)))?;
@@ -161,10 +161,19 @@ impl TextParser {
         // Убираем возможные комментарии и пробелы
         let clean_value = value.split('#').next().unwrap_or(value).trim();
 
-        clean_value.parse::<i64>()
+        let amount = clean_value.parse::<i64>()
             .map_err(|e| ParserError::Parse(
                 format!("Line {}: invalid {} '{}': {}", line_number, field_name, clean_value, e)
-            ))
+            ))?;
+
+        // Проверяем что сумма положительная
+        if amount <= 0 {
+            return Err(ParserError::Parse(
+                format!("Line {}: {} must be positive, got {}", line_number, field_name, amount)
+            ));
+        }
+
+        Ok(amount)
     }
 
     /// Парсит тип транзакции
@@ -176,9 +185,9 @@ impl TextParser {
             "DEPOSIT" => Ok(TransactionType::Deposit),
             "TRANSFER" => Ok(TransactionType::Transfer),
             "WITHDRAWAL" => Ok(TransactionType::Withdrawal),
-            _ => Err(ParserError::Parse(
+            other => Err(ParserError::Parse(
                 format!("Line {}: invalid TX_TYPE '{}', must be DEPOSIT, TRANSFER, or WITHDRAWAL",
-                        line_number, value)
+                        line_number, other)
             )),
         }
     }
@@ -192,9 +201,9 @@ impl TextParser {
             "SUCCESS" => Ok(TransactionStatus::Success),
             "FAILURE" => Ok(TransactionStatus::Failure),
             "PENDING" => Ok(TransactionStatus::Pending),
-            _ => Err(ParserError::Parse(
+            other => Err(ParserError::Parse(
                 format!("Line {}: invalid STATUS '{}', must be SUCCESS, FAILURE, or PENDING",
-                        line_number, value)
+                        line_number, other)
             )),
         }
     }
@@ -221,14 +230,17 @@ impl TextParser {
         Ok(unescaped)
     }
 
-    /// Валидирует запись согласно бизнес-правилам
+        /// Валидирует запись согласно бизнес-правилам
     fn validate_record(
         tx_type: TransactionType,
         from_user_id: u64,
         to_user_id: u64,
-        amount: i64,
+        _amount: i64, // Всегда положительное в текстовом формате (уже проверено в parse_i64_field)
         line_number: usize,
     ) -> Result<(), ParserError> {
+        // Сумма уже проверена на положительность в parse_i64_field,
+        // поэтому здесь просто игнорируем параметр
+
         match tx_type {
             TransactionType::Deposit => {
                 if from_user_id != 0 {
@@ -237,24 +249,12 @@ impl TextParser {
                                 line_number, from_user_id)
                     ));
                 }
-                if amount <= 0 {
-                    return Err(ParserError::Parse(
-                        format!("Line {}: DEPOSIT amount must be positive, got {}",
-                                line_number, amount)
-                    ));
-                }
             }
             TransactionType::Withdrawal => {
                 if to_user_id != 0 {
                     return Err(ParserError::Parse(
                         format!("Line {}: WITHDRAWAL must have TO_USER_ID = 0, got {}",
                                 line_number, to_user_id)
-                    ));
-                }
-                if amount >= 0 {
-                    return Err(ParserError::Parse(
-                        format!("Line {}: WITHDRAWAL amount must be negative, got {}",
-                                line_number, amount)
                     ));
                 }
             }
@@ -311,8 +311,7 @@ mod tests {
 
     #[test]
     fn test_parse_valid_text() {
-        let text_data = r#"# Record 1 (Deposit)
-TX_ID: 1234567890123456
+        let text_data = r#"TX_ID: 1234567890123456
 TX_TYPE: DEPOSIT
 FROM_USER_ID: 0
 TO_USER_ID: 9876543210987654
@@ -321,7 +320,6 @@ TIMESTAMP: 1633036800000
 STATUS: SUCCESS
 DESCRIPTION: "Terminal deposit"
 
-# Record 2 (Transfer)
 TX_ID: 2312321321321321
 TX_TYPE: TRANSFER
 FROM_USER_ID: 1231231231231231
@@ -331,12 +329,11 @@ TIMESTAMP: 1633056800000
 STATUS: FAILURE
 DESCRIPTION: "User transfer"
 
-# Record 3 (Withdrawal)
 TX_ID: 3213213213213213
 TX_TYPE: WITHDRAWAL
 FROM_USER_ID: 9876543210987654
 TO_USER_ID: 0
-AMOUNT: -100
+AMOUNT: 100
 TIMESTAMP: 1633066800000
 STATUS: SUCCESS
 DESCRIPTION: "User withdrawal""#;
@@ -354,7 +351,7 @@ DESCRIPTION: "User withdrawal""#;
         assert!(matches!(transactions[0].tx_type, TransactionType::Deposit));
         assert_eq!(transactions[0].from_user_id, 0);
         assert_eq!(transactions[0].to_user_id, 9876543210987654);
-        assert_eq!(transactions[0].amount, 10000);
+        assert_eq!(transactions[0].amount, 10000); // Положительная
         assert_eq!(transactions[0].timestamp, 1633036800000);
         assert!(matches!(transactions[0].status, TransactionStatus::Success));
         assert_eq!(transactions[0].description, "Terminal deposit");
@@ -367,7 +364,7 @@ DESCRIPTION: "User withdrawal""#;
         // Проверяем третью запись
         assert_eq!(transactions[2].tx_id, 3213213213213213);
         assert!(matches!(transactions[2].tx_type, TransactionType::Withdrawal));
-        assert_eq!(transactions[2].amount, -100);
+        assert_eq!(transactions[2].amount, 100); // Положительная для WITHDRAWAL
     }
 
     #[test]
@@ -392,7 +389,7 @@ TX_ID: 1002
 TX_TYPE: TRANSFER
 FROM_USER_ID: 501
 TO_USER_ID: 502
-AMOUNT: -15000
+AMOUNT: 15000
 TIMESTAMP: 1672534800000
 STATUS: FAILURE
 DESCRIPTION: "Test transfer"
@@ -525,7 +522,7 @@ DESCRIPTION: "Test with \"quotes\" inside""#;
                 tx_type: TransactionType::Transfer,
                 from_user_id: 501,
                 to_user_id: 502,
-                amount: -15000,
+                amount: 15000,
                 timestamp: 1672534800000,
                 status: TransactionStatus::Failure,
                 description: r#"Transfer with "quotes" and special chars"#.to_string(),
@@ -538,7 +535,6 @@ DESCRIPTION: "Test with \"quotes\" inside""#;
         assert!(result.is_ok());
 
         let text_output = String::from_utf8(buffer).unwrap();
-        println!("Generated text:\n{}", text_output);
 
         // Проверяем наличие комментариев
         assert!(text_output.contains("# Record"));
@@ -573,7 +569,7 @@ DESCRIPTION: "Test with \"quotes\" inside""#;
                 tx_type: TransactionType::Withdrawal,
                 from_user_id: 1234567890,
                 to_user_id: 0,
-                amount: -50000,
+                amount: 50000, // Положительная для WITHDRAWAL
                 timestamp: 1672534800000,
                 status: TransactionStatus::Pending,
                 description: "Test withdrawal".to_string(),
@@ -635,12 +631,12 @@ DESCRIPTION: "Invalid deposit""#;
 
     #[test]
     fn test_business_validation_withdrawal() {
-        // WITHDRAWAL с положительной суммой
+        // WITHDRAWAL с ненулевым to_user_id
         let text = r#"TX_ID: 1001
 TX_TYPE: WITHDRAWAL
 FROM_USER_ID: 501
-TO_USER_ID: 0
-AMOUNT: 1000  # Должно быть отрицательным
+TO_USER_ID: 123  # Должно быть 0
+AMOUNT: 1000
 TIMESTAMP: 1672531200000
 STATUS: SUCCESS
 DESCRIPTION: "Invalid withdrawal""#;
@@ -649,5 +645,47 @@ DESCRIPTION: "Invalid withdrawal""#;
         let result = TextParser::parse_records(cursor);
 
         assert!(matches!(result, Err(ParserError::Parse(_))));
+    }
+
+    #[test]
+    fn test_negative_amount() {
+        // Отрицательная сумма недопустима в текстовом формате
+        let text = r#"TX_ID: 1001
+TX_TYPE: DEPOSIT
+FROM_USER_ID: 0
+TO_USER_ID: 501
+AMOUNT: -50000
+TIMESTAMP: 1672531200000
+STATUS: SUCCESS
+DESCRIPTION: "Test""#;
+
+        let cursor = Cursor::new(text);
+        let result = TextParser::parse_records(cursor);
+
+        assert!(matches!(result, Err(ParserError::Parse(_))));
+        if let Err(ParserError::Parse(msg)) = result {
+            assert!(msg.contains("positive"));
+        }
+    }
+
+    #[test]
+    fn test_zero_amount() {
+        // Нулевая сумма недопустима
+        let text = r#"TX_ID: 1001
+TX_TYPE: DEPOSIT
+FROM_USER_ID: 0
+TO_USER_ID: 501
+AMOUNT: 0
+TIMESTAMP: 1672531200000
+STATUS: SUCCESS
+DESCRIPTION: "Test""#;
+
+        let cursor = Cursor::new(text);
+        let result = TextParser::parse_records(cursor);
+
+        assert!(matches!(result, Err(ParserError::Parse(_))));
+        if let Err(ParserError::Parse(msg)) = result {
+            assert!(msg.contains("positive"));
+        }
     }
 }

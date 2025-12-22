@@ -1,10 +1,11 @@
-use parser_lib::{BinaryParser, BinaryRecord, TransactionType, TransactionStatus};
+use parser_lib::{BinaryParser, Transaction, TransactionType, TransactionStatus};
 use std::io::Cursor;
 
 #[test]
 fn test_binary_parser_multiple_records() {
+    // Создаем тестовые транзакции напрямую
     let records = vec![
-        BinaryRecord {
+        Transaction {
             tx_id: 1001,
             tx_type: TransactionType::Deposit,
             from_user_id: 0,
@@ -14,7 +15,7 @@ fn test_binary_parser_multiple_records() {
             status: TransactionStatus::Success,
             description: "First".to_string(),
         },
-        BinaryRecord {
+        Transaction {
             tx_id: 1002,
             tx_type: TransactionType::Transfer,
             from_user_id: 501,
@@ -26,11 +27,11 @@ fn test_binary_parser_multiple_records() {
         },
     ];
 
+    // Записываем через BinaryParser
     let mut buffer = Vec::new();
-    for record in &records {
-        record.write_to(&mut buffer).unwrap();
-    }
+    BinaryParser::write_records(&records, &mut buffer).unwrap();
 
+    // Читаем обратно
     let mut cursor = Cursor::new(&buffer);
     let parsed = BinaryParser::parse_records(&mut cursor).unwrap();
 
