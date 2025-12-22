@@ -8,6 +8,7 @@ use std::path::PathBuf;
 #[derive(Parser, Debug)]
 #[command(name = "ypbank_compare")]
 #[command(about = "Сравнивает транзакции из двух файлов в разных форматах", long_about = None)]
+#[command(version = env!("CARGO_PKG_VERSION"))]
 struct Args {
     /// Первый файл для сравнения
     #[arg(long = "file1", value_name = "FILE")]
@@ -100,7 +101,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Читает транзакции из файла в указанном формате
+/// Читаем транзакции из файла в указанном формате
 fn read_transactions(
     file_path: &PathBuf,
     format: &Format,
@@ -298,7 +299,7 @@ mod tests {
             file2: PathBuf::from("test2.csv"),
             format2: Format::Csv,
             verbose: false,
-            ignore_description: true,  // Игнорируем описание
+            ignore_description: true,
             ignore_status: false,
         };
 
@@ -319,7 +320,7 @@ mod tests {
             format2: Format::Csv,
             verbose: false,
             ignore_description: false,
-            ignore_status: true,  // Игнорируем статус
+            ignore_status: true,
         };
 
         assert!(transactions_equal(&tx1, &tx2, &args));
@@ -373,5 +374,68 @@ mod tests {
         assert_eq!(transactions[0].tx_id, 1001);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_print_differences() {
+        let tx1 = create_test_transaction(1001);
+        let mut tx2 = create_test_transaction(1001);
+        tx2.amount = 60000;
+        tx2.description = "Different".to_string();
+
+        let args = Args {
+            file1: PathBuf::from("test1.csv"),
+            format1: Format::Csv,
+            file2: PathBuf::from("test2.csv"),
+            format2: Format::Csv,
+            verbose: false,
+            ignore_description: false,
+            ignore_status: false,
+        };
+
+        // Функция print_differences просто печатает, но мы можем проверить
+        // что она не падает
+        print_differences(&tx1, &tx2, &args);
+    }
+
+    #[test]
+    fn test_compare_empty_lists() {
+        let args = Args {
+            file1: PathBuf::from("test1.csv"),
+            format1: Format::Csv,
+            file2: PathBuf::from("test2.csv"),
+            format2: Format::Csv,
+            verbose: false,
+            ignore_description: false,
+            ignore_status: false,
+        };
+
+        let empty: Vec<Transaction> = Vec::new();
+        // Функция compare_transactions возвращает Result,
+        // проверяем что она не падает на пустых списках
+        let result = compare_transactions(&empty, &empty, &args);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_compare_different_lengths() {
+        let args = Args {
+            file1: PathBuf::from("test1.csv"),
+            format1: Format::Csv,
+            file2: PathBuf::from("test2.csv"),
+            format2: Format::Csv,
+            verbose: false,
+            ignore_description: false,
+            ignore_status: false,
+        };
+
+        let tx1 = create_test_transaction(1001);
+        let tx2 = create_test_transaction(1002);
+
+        let list1 = vec![tx1.clone(), tx2.clone()];
+        let list2 = vec![tx1];
+
+        let result = compare_transactions(&list1, &list2, &args);
+        assert!(result.is_ok());
     }
 }

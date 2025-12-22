@@ -97,3 +97,48 @@ fn test_cross_format_roundtrip() {
     assert_eq!(bin_result.len(), 1);
     assert_eq!(bin_result[0].tx_id, original.tx_id);
 }
+
+#[test]
+fn test_comparer_functionality() {
+    // Этот тест проверяет, что парсеры работают согласованно,
+    // что важно для comparer
+
+    let transaction = Transaction {
+        tx_id: 1001,
+        tx_type: TransactionType::Deposit,
+        from_user_id: 0,
+        to_user_id: 501,
+        amount: 50000,
+        timestamp: 1672531200000,
+        status: TransactionStatus::Success,
+        description: "Test".to_string(),
+    };
+
+    // CSV roundtrip
+    let mut csv_buffer = Vec::new();
+    CsvParser::write_records(&[transaction.clone()], &mut csv_buffer).unwrap();
+    let csv_cursor = std::io::Cursor::new(csv_buffer);
+    let csv_result = CsvParser::parse_records(csv_cursor).unwrap();
+
+    // Text roundtrip
+    let mut text_buffer = Vec::new();
+    TextParser::write_records(&[transaction.clone()], &mut text_buffer).unwrap();
+    let text_cursor = std::io::Cursor::new(text_buffer);
+    let text_result = TextParser::parse_records(text_cursor).unwrap();
+
+    // Binary roundtrip
+    let mut bin_buffer = Vec::new();
+    BinaryParser::write_records(&[transaction.clone()], &mut bin_buffer).unwrap();
+    let mut bin_cursor = std::io::Cursor::new(bin_buffer);
+    let bin_result = BinaryParser::parse_records(&mut bin_cursor).unwrap();
+
+    // Все должны быть равны оригиналу
+    assert_eq!(csv_result[0], transaction);
+    assert_eq!(text_result[0], transaction);
+    assert_eq!(bin_result[0], transaction);
+
+    // Все должны быть равны между собой
+    assert_eq!(csv_result[0], text_result[0]);
+    assert_eq!(csv_result[0], bin_result[0]);
+    assert_eq!(text_result[0], bin_result[0]);
+}

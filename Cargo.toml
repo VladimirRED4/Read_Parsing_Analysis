@@ -28,6 +28,10 @@ path = "src/bin/test_txt.rs"
 name = "comparer"
 path = "src/bin/comparer.rs"
 
+# [[bin]]
+# name = "debug_comparer"
+# path = "tests/debug_comparer.rs"
+
 [[bin]]
 name = "debug_binary"
 path = "src/bin/debug_binary.rs"
