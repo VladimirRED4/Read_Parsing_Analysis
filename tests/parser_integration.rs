@@ -100,9 +100,6 @@ fn test_cross_format_roundtrip() {
 
 #[test]
 fn test_comparer_functionality() {
-    // Этот тест проверяет, что парсеры работают согласованно,
-    // что важно для comparer
-
     let transaction = Transaction {
         tx_id: 1001,
         tx_type: TransactionType::Deposit,

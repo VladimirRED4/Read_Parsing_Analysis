@@ -393,8 +393,6 @@ mod tests {
             ignore_status: false,
         };
 
-        // Функция print_differences просто печатает, но мы можем проверить
-        // что она не падает
         print_differences(&tx1, &tx2, &args);
     }
 

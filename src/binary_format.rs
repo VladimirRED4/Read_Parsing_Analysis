@@ -4,7 +4,6 @@ use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 const MAGIC: [u8; 4] = [0x59, 0x50, 0x42, 0x4E]; // 'YPBN'
 
-/// Упрощенный парсер для бинарного формата
 pub struct BinaryParser;
 
 impl BinaryParser {
