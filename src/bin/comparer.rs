@@ -65,8 +65,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.verbose {
         eprintln!("=== YPBank Comparer ===");
         eprintln!("Сравниваем файлы:");
-        eprintln!("  Файл 1: {} (формат: {:?})", args.file1.display(), args.format1);
-        eprintln!("  Файл 2: {} (формат: {:?})", args.file2.display(), args.format2);
+        eprintln!(
+            "  Файл 1: {} (формат: {:?})",
+            args.file1.display(),
+            args.format1
+        );
+        eprintln!(
+            "  Файл 2: {} (формат: {:?})",
+            args.file2.display(),
+            args.format2
+        );
         if args.ignore_description {
             eprintln!("  Игнорируем различия в описаниях");
         }
@@ -108,23 +116,51 @@ fn read_transactions(
 ) -> Result<Vec<Transaction>, Box<dyn std::error::Error>> {
     match format {
         Format::Csv => {
-            let file = File::open(file_path)
-                .map_err(|e| format!("Не удалось открыть CSV файл '{}': {}", file_path.display(), e))?;
-            CsvParser::parse_records(file)
-                .map_err(|e| format!("Ошибка парсинга CSV файла '{}': {}", file_path.display(), e).into())
+            let file = File::open(file_path).map_err(|e| {
+                format!(
+                    "Не удалось открыть CSV файл '{}': {}",
+                    file_path.display(),
+                    e
+                )
+            })?;
+            CsvParser::parse_records(file).map_err(|e| {
+                format!("Ошибка парсинга CSV файла '{}': {}", file_path.display(), e).into()
+            })
         }
         Format::Txt => {
-            let file = File::open(file_path)
-                .map_err(|e| format!("Не удалось открыть текстовый файл '{}': {}", file_path.display(), e))?;
-            TextParser::parse_records(file)
-                .map_err(|e| format!("Ошибка парсинга текстового файла '{}': {}", file_path.display(), e).into())
+            let file = File::open(file_path).map_err(|e| {
+                format!(
+                    "Не удалось открыть текстовый файл '{}': {}",
+                    file_path.display(),
+                    e
+                )
+            })?;
+            TextParser::parse_records(file).map_err(|e| {
+                format!(
+                    "Ошибка парсинга текстового файла '{}': {}",
+                    file_path.display(),
+                    e
+                )
+                .into()
+            })
         }
         Format::Bin => {
-            let file = File::open(file_path)
-                .map_err(|e| format!("Не удалось открыть бинарный файл '{}': {}", file_path.display(), e))?;
+            let file = File::open(file_path).map_err(|e| {
+                format!(
+                    "Не удалось открыть бинарный файл '{}': {}",
+                    file_path.display(),
+                    e
+                )
+            })?;
             let mut reader = BufReader::new(file);
-            BinaryParser::parse_records(&mut reader)
-                .map_err(|e| format!("Ошибка парсинга бинарного файла '{}': {}", file_path.display(), e).into())
+            BinaryParser::parse_records(&mut reader).map_err(|e| {
+                format!(
+                    "Ошибка парсинга бинарного файла '{}': {}",
+                    file_path.display(),
+                    e
+                )
+                .into()
+            })
         }
     }
 }
@@ -162,17 +198,27 @@ fn compare_transactions(
 
     // Выводим результаты
     if mismatches.is_empty() {
-        println!("Транзакции в '{}' и '{}' идентичны.",
-                 args.file1.display(), args.file2.display());
+        println!(
+            "Транзакции в '{}' и '{}' идентичны.",
+            args.file1.display(),
+            args.file2.display()
+        );
         if args.verbose {
             println!("Все {} транзакций совпадают.", identical_count);
         }
     } else {
-        println!("Найдено {} несоответствий из {} транзакций:",
-                 mismatches.len(), txs1.len());
+        println!(
+            "Найдено {} несоответствий из {} транзакций:",
+            mismatches.len(),
+            txs1.len()
+        );
 
         for (i, tx1, tx2) in mismatches.iter().take(10) {
-            println!("\nНесоответствие в транзакции #{} (ID: {}):", i + 1, tx1.tx_id);
+            println!(
+                "\nНесоответствие в транзакции #{} (ID: {}):",
+                i + 1,
+                tx1.tx_id
+            );
             print_differences(tx1, tx2, args);
         }
 
@@ -229,7 +275,10 @@ fn print_differences(tx1: &Transaction, tx2: &Transaction, args: &Args) {
         println!("  TX_TYPE: {:?} != {:?}", tx1.tx_type, tx2.tx_type);
     }
     if tx1.from_user_id != tx2.from_user_id {
-        println!("  FROM_USER_ID: {} != {}", tx1.from_user_id, tx2.from_user_id);
+        println!(
+            "  FROM_USER_ID: {} != {}",
+            tx1.from_user_id, tx2.from_user_id
+        );
     }
     if tx1.to_user_id != tx2.to_user_id {
         println!("  TO_USER_ID: {} != {}", tx1.to_user_id, tx2.to_user_id);
@@ -244,16 +293,19 @@ fn print_differences(tx1: &Transaction, tx2: &Transaction, args: &Args) {
         println!("  STATUS: {:?} != {:?}", tx1.status, tx2.status);
     }
     if !args.ignore_description && tx1.description != tx2.description {
-        println!("  DESCRIPTION: '{}' != '{}'", tx1.description, tx2.description);
+        println!(
+            "  DESCRIPTION: '{}' != '{}'",
+            tx1.description, tx2.description
+        );
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use parser_lib::{TransactionType, TransactionStatus};
-    use tempfile::NamedTempFile;
+    use parser_lib::{TransactionStatus, TransactionType};
     use std::io::Write;
+    use tempfile::NamedTempFile;
 
     fn create_test_transaction(id: u64) -> Transaction {
         Transaction {
@@ -329,7 +381,7 @@ mod tests {
     #[test]
     fn test_transactions_not_equal() {
         let tx1 = create_test_transaction(1001);
-        let tx2 = create_test_transaction(1002);  // Разный ID
+        let tx2 = create_test_transaction(1002); // Разный ID
 
         let args = Args {
             file1: PathBuf::from("test1.csv"),
@@ -347,8 +399,14 @@ mod tests {
     #[test]
     fn test_create_csv_file() -> Result<(), Box<dyn std::error::Error>> {
         let mut file = NamedTempFile::new()?;
-        writeln!(file, "TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION")?;
-        writeln!(file, "1001,DEPOSIT,0,501,50000,1672531200000,SUCCESS,\"Test\"")?;
+        writeln!(
+            file,
+            "TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION"
+        )?;
+        writeln!(
+            file,
+            "1001,DEPOSIT,0,501,50000,1672531200000,SUCCESS,\"Test\""
+        )?;
 
         let transactions = read_transactions(&file.path().to_path_buf(), &Format::Csv)?;
         assert_eq!(transactions.len(), 1);

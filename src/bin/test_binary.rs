@@ -1,5 +1,5 @@
+use parser_lib::{BinaryParser, BinaryRecord, Transaction, TransactionStatus, TransactionType};
 use std::io::Cursor;
-use parser_lib::{BinaryRecord, BinaryParser, Transaction, TransactionType, TransactionStatus};
 
 fn main() -> Result<(), parser_lib::ParserError> {
     println!("=== Тестирование бинарного формата ===\n");
@@ -26,7 +26,10 @@ fn main() -> Result<(), parser_lib::ParserError> {
 
     if record == parsed {
         println!("   ✓ Round-trip успешен");
-        println!("   TX_ID: {}, Описание: '{}'", parsed.tx_id, parsed.description);
+        println!(
+            "   TX_ID: {}, Описание: '{}'",
+            parsed.tx_id, parsed.description
+        );
     } else {
         println!("   ✗ Round-trip не удался");
     }
@@ -71,7 +74,11 @@ fn main() -> Result<(), parser_lib::ParserError> {
     for record in &records {
         record.write_to(&mut multi_buffer)?;
     }
-    println!("   Записано {} записей, всего {} байт", records.len(), multi_buffer.len());
+    println!(
+        "   Записано {} записей, всего {} байт",
+        records.len(),
+        multi_buffer.len()
+    );
 
     // 3. Тест через BinaryParser
     println!("\n3. Чтение через BinaryParser:");
@@ -80,15 +87,23 @@ fn main() -> Result<(), parser_lib::ParserError> {
 
     println!("   Прочитано {} транзакций", transactions.len());
     for (i, tx) in transactions.iter().enumerate() {
-        println!("   Транзакция {}: ID={}, Тип={:?}, Сумма={}, Статус={:?}",
-                 i + 1, tx.tx_id, tx.tx_type, tx.amount, tx.status);
+        println!(
+            "   Транзакция {}: ID={}, Тип={:?}, Сумма={}, Статус={:?}",
+            i + 1,
+            tx.tx_id,
+            tx.tx_type,
+            tx.amount,
+            tx.status
+        );
     }
 
     // 4. Тест конвертации
     println!("\n4. Тест конвертации в Transaction:");
     let transaction: Transaction = records[0].clone().into();
-    println!("   Конвертировано: ID={}, Описание='{}'",
-             transaction.tx_id, transaction.description);
+    println!(
+        "   Конвертировано: ID={}, Описание='{}'",
+        transaction.tx_id, transaction.description
+    );
 
     // 5. Тест с пустым описанием
     println!("\n5. Тест с пустым описанием:");

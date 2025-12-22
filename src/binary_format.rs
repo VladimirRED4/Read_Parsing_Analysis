@@ -1,6 +1,6 @@
-use crate::{Transaction, TransactionType, TransactionStatus, ParserError};
-use std::io::{Read, Write};
+use crate::{ParserError, Transaction, TransactionStatus, TransactionType};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use std::io::{Read, Write};
 
 const MAGIC: [u8; 4] = [0x59, 0x50, 0x42, 0x4E]; // 'YPBN'
 
@@ -21,7 +21,10 @@ impl BinaryParser {
         Ok(records)
     }
 
-    pub fn write_records<W: Write>(records: &[Transaction], writer: &mut W) -> Result<(), ParserError> {
+    pub fn write_records<W: Write>(
+        records: &[Transaction],
+        writer: &mut W,
+    ) -> Result<(), ParserError> {
         for record in records {
             let binary_record: BinaryRecord = record.into();
             binary_record.write_to(writer)?;
@@ -49,9 +52,10 @@ impl BinaryRecord {
         reader.read_exact(&mut magic)?;
 
         if magic != MAGIC {
-            return Err(ParserError::Parse(
-                format!("Invalid magic number: {:?}, expected {:?}", magic, MAGIC)
-            ));
+            return Err(ParserError::Parse(format!(
+                "Invalid magic number: {:?}, expected {:?}",
+                magic, MAGIC
+            )));
         }
 
         // Читаем размер записи
@@ -67,9 +71,12 @@ impl BinaryRecord {
             0 => TransactionType::Deposit,
             1 => TransactionType::Transfer,
             2 => TransactionType::Withdrawal,
-            _ => return Err(ParserError::Parse(
-                format!("Invalid TX_TYPE: {}", tx_type_byte)
-            )),
+            _ => {
+                return Err(ParserError::Parse(format!(
+                    "Invalid TX_TYPE: {}",
+                    tx_type_byte
+                )));
+            }
         };
 
         // FROM_USER_ID
@@ -90,9 +97,12 @@ impl BinaryRecord {
             0 => TransactionStatus::Success,
             1 => TransactionStatus::Failure,
             2 => TransactionStatus::Pending,
-            _ => return Err(ParserError::Parse(
-                format!("Invalid STATUS: {}", status_byte)
-            )),
+            _ => {
+                return Err(ParserError::Parse(format!(
+                    "Invalid STATUS: {}",
+                    status_byte
+                )));
+            }
         };
 
         // DESC_LEN
@@ -101,10 +111,10 @@ impl BinaryRecord {
         // Проверяем соответствие размера
         let expected_size = 8 + 1 + 8 + 8 + 8 + 8 + 1 + 4 + desc_len as u64;
         if record_size as u64 != expected_size {
-            return Err(ParserError::Parse(
-                format!("Record size mismatch: header says {}, expected {}",
-                        record_size, expected_size)
-            ));
+            return Err(ParserError::Parse(format!(
+                "Record size mismatch: header says {}, expected {}",
+                record_size, expected_size
+            )));
         }
 
         // DESCRIPTION
@@ -114,22 +124,20 @@ impl BinaryRecord {
         }
 
         let mut description = String::from_utf8(description_buf)
-            .map_err(|e| ParserError::Parse(
-            format!("Invalid UTF-8 in description: {}", e)
-            ))?;
+            .map_err(|e| ParserError::Parse(format!("Invalid UTF-8 in description: {}", e)))?;
 
         // Убираем окружающие кавычки из описания, если они есть
         description = Self::normalize_description(&description);
 
         Ok(BinaryRecord {
-        tx_id,
-        tx_type,
-        from_user_id,
-        to_user_id,
-        amount,
-        timestamp,
-        status,
-        description,
+            tx_id,
+            tx_type,
+            from_user_id,
+            to_user_id,
+            amount,
+            timestamp,
+            status,
+            description,
         })
     }
 

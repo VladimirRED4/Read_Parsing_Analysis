@@ -1,5 +1,5 @@
+use parser_lib::{TextParser, Transaction, TransactionStatus, TransactionType};
 use std::io::Cursor;
-use parser_lib::{TextParser, Transaction, TransactionType, TransactionStatus};
 
 fn main() -> Result<(), parser_lib::ParserError> {
     println!("=== Тестирование текстового формата ===\n");
@@ -131,8 +131,14 @@ DESCRIPTION: "Record number 12""#;
 
     println!("   Прочитано {} транзакций:", transactions.len());
     for (i, tx) in transactions.iter().enumerate() {
-        println!("   {}: ID={}, Тип={:?}, Сумма={}, Статус={:?}",
-                 i + 1, tx.tx_id, tx.tx_type, tx.amount, tx.status);
+        println!(
+            "   {}: ID={}, Тип={:?}, Сумма={}, Статус={:?}",
+            i + 1,
+            tx.tx_id,
+            tx.tx_type,
+            tx.amount,
+            tx.status
+        );
     }
 
     // 2. Запись обратно в текстовый формат
@@ -205,8 +211,10 @@ TIMESTAMP: 1672642800000"#;
     let cursor = Cursor::new(random_order_text);
     let random_transactions = TextParser::parse_records(cursor)?;
 
-    println!("   Успешно распарсено: ID={}, Сумма={}",
-             random_transactions[0].tx_id, random_transactions[0].amount);
+    println!(
+        "   Успешно распарсено: ID={}, Сумма={}",
+        random_transactions[0].tx_id, random_transactions[0].amount
+    );
 
     // 6. Тест с комментариями и пробелами
     println!("\n6. Тест с комментариями и пробелами:");
@@ -239,8 +247,10 @@ DESCRIPTION: "Another one"
     let cursor = Cursor::new(messy_text);
     let messy_transactions = TextParser::parse_records(cursor)?;
 
-    println!("   Распарсено {} транзакций из грязного текста",
-             messy_transactions.len());
+    println!(
+        "   Распарсено {} транзакций из грязного текста",
+        messy_transactions.len()
+    );
 
     println!("\n=== Все тесты завершены ===");
     Ok(())

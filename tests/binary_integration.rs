@@ -1,4 +1,4 @@
-use parser_lib::{BinaryParser, Transaction, TransactionType, TransactionStatus};
+use parser_lib::{BinaryParser, Transaction, TransactionStatus, TransactionType};
 use std::io::Cursor;
 
 #[test]

@@ -15,8 +15,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  ID: {}", tx.tx_id);
         println!("  Описание: '{}'", tx.description);
         println!("  Длина: {}", tx.description.len());
-        println!("  Первый символ: '{}'", tx.description.chars().next().unwrap_or(' '));
-        println!("  Последний символ: '{}'", tx.description.chars().last().unwrap_or(' '));
+        println!(
+            "  Первый символ: '{}'",
+            tx.description.chars().next().unwrap_or(' ')
+        );
+        println!(
+            "  Последний символ: '{}'",
+            tx.description.chars().last().unwrap_or(' ')
+        );
         println!("  Байты: {:?}", tx.description.as_bytes());
     }
 

@@ -1,4 +1,4 @@
-use crate::{Transaction, TransactionType, TransactionStatus, ParserError};
+use crate::{ParserError, Transaction, TransactionStatus, TransactionType};
 use std::io::{Read, Write};
 
 /// Парсер для CSV формата
@@ -7,8 +7,7 @@ pub struct CsvParser;
 impl CsvParser {
     /// Читает все записи из CSV источника
     pub fn parse_records<R: Read>(reader: R) -> Result<Vec<Transaction>, ParserError> {
-        let content = std::io::read_to_string(reader)
-            .map_err(ParserError::Io)?;
+        let content = std::io::read_to_string(reader).map_err(ParserError::Io)?;
 
         let lines: Vec<&str> = content.lines().collect();
 
@@ -37,10 +36,16 @@ impl CsvParser {
     }
 
     /// Записывает все записи в CSV приёмник
-    pub fn write_records<W: Write>(records: &[Transaction], writer: &mut W) -> Result<(), ParserError> {
+    pub fn write_records<W: Write>(
+        records: &[Transaction],
+        writer: &mut W,
+    ) -> Result<(), ParserError> {
         // Записываем заголовок
-        writeln!(writer, "TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION")
-            .map_err(ParserError::Io)?;
+        writeln!(
+            writer,
+            "TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION"
+        )
+        .map_err(ParserError::Io)?;
 
         for record in records {
             let tx_type = match record.tx_type {
@@ -58,7 +63,9 @@ impl CsvParser {
             // Экранируем описание для CSV - ВСЕГДА в кавычках
             let description = Self::escape_description(&record.description);
 
-            writeln!(writer, "{},{},{},{},{},{},{},{}",
+            writeln!(
+                writer,
+                "{},{},{},{},{},{},{},{}",
                 record.tx_id,
                 tx_type,
                 record.from_user_id,
@@ -67,7 +74,8 @@ impl CsvParser {
                 record.timestamp,
                 status,
                 description
-            ).map_err(ParserError::Io)?;
+            )
+            .map_err(ParserError::Io)?;
         }
 
         Ok(())
@@ -121,9 +129,10 @@ impl CsvParser {
 
         // Проверяем, что все кавычки закрыты
         if in_quotes {
-            return Err(ParserError::Parse(
-                format!("Line {}: Unclosed double quote", line_num)
-            ));
+            return Err(ParserError::Parse(format!(
+                "Line {}: Unclosed double quote",
+                line_num
+            )));
         }
 
         Ok(fields)
@@ -132,21 +141,32 @@ impl CsvParser {
     /// Проверяет корректность заголовка
     fn validate_headers(headers: &[String]) -> Result<(), ParserError> {
         let expected = [
-            "TX_ID", "TX_TYPE", "FROM_USER_ID", "TO_USER_ID",
-            "AMOUNT", "TIMESTAMP", "STATUS", "DESCRIPTION"
+            "TX_ID",
+            "TX_TYPE",
+            "FROM_USER_ID",
+            "TO_USER_ID",
+            "AMOUNT",
+            "TIMESTAMP",
+            "STATUS",
+            "DESCRIPTION",
         ];
 
         if headers.len() != expected.len() {
-            return Err(ParserError::Parse(
-                format!("Expected {} columns, got {}", expected.len(), headers.len())
-            ));
+            return Err(ParserError::Parse(format!(
+                "Expected {} columns, got {}",
+                expected.len(),
+                headers.len()
+            )));
         }
 
         for (i, (actual, expected)) in headers.iter().zip(expected.iter()).enumerate() {
             if actual != expected {
-                return Err(ParserError::Parse(
-                    format!("Column {}: expected '{}', got '{}'", i + 1, expected, actual)
-                ));
+                return Err(ParserError::Parse(format!(
+                    "Column {}: expected '{}', got '{}'",
+                    i + 1,
+                    expected,
+                    actual
+                )));
             }
         }
 
@@ -156,61 +176,77 @@ impl CsvParser {
     /// Парсит запись из полей
     fn parse_record(fields: &[String], line_num: usize) -> Result<Transaction, ParserError> {
         if fields.len() != 8 {
-            return Err(ParserError::Parse(
-                format!("Line {}: Expected 8 fields, got {}", line_num, fields.len())
-            ));
+            return Err(ParserError::Parse(format!(
+                "Line {}: Expected 8 fields, got {}",
+                line_num,
+                fields.len()
+            )));
         }
 
         // Парсим TX_ID
-        let tx_id = fields[0].parse::<u64>()
-            .map_err(|e| ParserError::Parse(
-                format!("Line {}: Invalid TX_ID '{}': {}", line_num, fields[0], e)
-            ))?;
+        let tx_id = fields[0].parse::<u64>().map_err(|e| {
+            ParserError::Parse(format!(
+                "Line {}: Invalid TX_ID '{}': {}",
+                line_num, fields[0], e
+            ))
+        })?;
 
         // Парсим TX_TYPE
         let tx_type = match fields[1].as_str() {
             "DEPOSIT" => TransactionType::Deposit,
             "TRANSFER" => TransactionType::Transfer,
             "WITHDRAWAL" => TransactionType::Withdrawal,
-            other => return Err(ParserError::Parse(
-                format!("Line {}: Invalid TX_TYPE '{}', must be DEPOSIT, TRANSFER, or WITHDRAWAL",
-                        line_num, other)
-            )),
+            other => {
+                return Err(ParserError::Parse(format!(
+                    "Line {}: Invalid TX_TYPE '{}', must be DEPOSIT, TRANSFER, or WITHDRAWAL",
+                    line_num, other
+                )));
+            }
         };
 
         // Парсим FROM_USER_ID
-        let from_user_id = fields[2].parse::<u64>()
-            .map_err(|e| ParserError::Parse(
-                format!("Line {}: Invalid FROM_USER_ID '{}': {}", line_num, fields[2], e)
-            ))?;
+        let from_user_id = fields[2].parse::<u64>().map_err(|e| {
+            ParserError::Parse(format!(
+                "Line {}: Invalid FROM_USER_ID '{}': {}",
+                line_num, fields[2], e
+            ))
+        })?;
 
         // Парсим TO_USER_ID
-        let to_user_id = fields[3].parse::<u64>()
-            .map_err(|e| ParserError::Parse(
-                format!("Line {}: Invalid TO_USER_ID '{}': {}", line_num, fields[3], e)
-            ))?;
+        let to_user_id = fields[3].parse::<u64>().map_err(|e| {
+            ParserError::Parse(format!(
+                "Line {}: Invalid TO_USER_ID '{}': {}",
+                line_num, fields[3], e
+            ))
+        })?;
 
         // Парсим AMOUNT (всегда положительное в CSV)
-        let amount = fields[4].parse::<i64>()
-            .map_err(|e| ParserError::Parse(
-                format!("Line {}: Invalid AMOUNT '{}': {}", line_num, fields[4], e)
-            ))?;
+        let amount = fields[4].parse::<i64>().map_err(|e| {
+            ParserError::Parse(format!(
+                "Line {}: Invalid AMOUNT '{}': {}",
+                line_num, fields[4], e
+            ))
+        })?;
 
         // Парсим TIMESTAMP
-        let timestamp = fields[5].parse::<u64>()
-            .map_err(|e| ParserError::Parse(
-                format!("Line {}: Invalid TIMESTAMP '{}': {}", line_num, fields[5], e)
-            ))?;
+        let timestamp = fields[5].parse::<u64>().map_err(|e| {
+            ParserError::Parse(format!(
+                "Line {}: Invalid TIMESTAMP '{}': {}",
+                line_num, fields[5], e
+            ))
+        })?;
 
         // Парсим STATUS
         let status = match fields[6].as_str() {
             "SUCCESS" => TransactionStatus::Success,
             "FAILURE" => TransactionStatus::Failure,
             "PENDING" => TransactionStatus::Pending,
-            other => return Err(ParserError::Parse(
-                format!("Line {}: Invalid STATUS '{}', must be SUCCESS, FAILURE, or PENDING",
-                        line_num, other)
-            )),
+            other => {
+                return Err(ParserError::Parse(format!(
+                    "Line {}: Invalid STATUS '{}', must be SUCCESS, FAILURE, or PENDING",
+                    line_num, other
+                )));
+            }
         };
 
         // DESCRIPTION - разэкранируем
@@ -241,39 +277,41 @@ impl CsvParser {
     ) -> Result<(), ParserError> {
         // Проверяем что сумма положительная (в CSV все суммы положительные)
         if amount <= 0 {
-            return Err(ParserError::Parse(
-                format!("Line {}: AMOUNT must be positive in CSV format, got {}",
-                        line_num, amount)
-            ));
+            return Err(ParserError::Parse(format!(
+                "Line {}: AMOUNT must be positive in CSV format, got {}",
+                line_num, amount
+            )));
         }
 
         match tx_type {
             TransactionType::Deposit => {
                 if from_user_id != 0 {
-                    return Err(ParserError::Parse(
-                        format!("Line {}: DEPOSIT must have FROM_USER_ID = 0, got {}",
-                                line_num, from_user_id)
-                    ));
+                    return Err(ParserError::Parse(format!(
+                        "Line {}: DEPOSIT must have FROM_USER_ID = 0, got {}",
+                        line_num, from_user_id
+                    )));
                 }
             }
             TransactionType::Withdrawal => {
                 if to_user_id != 0 {
-                    return Err(ParserError::Parse(
-                        format!("Line {}: WITHDRAWAL must have TO_USER_ID = 0, got {}",
-                                line_num, to_user_id)
-                    ));
+                    return Err(ParserError::Parse(format!(
+                        "Line {}: WITHDRAWAL must have TO_USER_ID = 0, got {}",
+                        line_num, to_user_id
+                    )));
                 }
             }
             TransactionType::Transfer => {
                 if from_user_id == 0 {
-                    return Err(ParserError::Parse(
-                        format!("Line {}: TRANSFER cannot have FROM_USER_ID = 0", line_num)
-                    ));
+                    return Err(ParserError::Parse(format!(
+                        "Line {}: TRANSFER cannot have FROM_USER_ID = 0",
+                        line_num
+                    )));
                 }
                 if to_user_id == 0 {
-                    return Err(ParserError::Parse(
-                        format!("Line {}: TRANSFER cannot have TO_USER_ID = 0", line_num)
-                    ));
+                    return Err(ParserError::Parse(format!(
+                        "Line {}: TRANSFER cannot have TO_USER_ID = 0",
+                        line_num
+                    )));
                 }
             }
         }
@@ -295,7 +333,7 @@ impl CsvParser {
 
         // Убираем окружающие кавычки если они есть
         if trimmed.starts_with('"') && trimmed.ends_with('"') {
-            let content = &trimmed[1..trimmed.len()-1];
+            let content = &trimmed[1..trimmed.len() - 1];
             // Разэкранируем двойные кавычки
             content.replace("\"\"", "\"")
         } else {
@@ -340,7 +378,10 @@ mod tests {
 
         // Проверяем третью запись
         assert_eq!(transactions[2].amount, 1000);
-        assert!(matches!(transactions[2].tx_type, TransactionType::Withdrawal));
+        assert!(matches!(
+            transactions[2].tx_type,
+            TransactionType::Withdrawal
+        ));
     }
 
     #[test]
@@ -355,7 +396,10 @@ mod tests {
         let transactions = result.unwrap();
 
         assert_eq!(transactions.len(), 1);
-        assert_eq!(transactions[0].description, "Payment for services, invoice #123");
+        assert_eq!(
+            transactions[0].description,
+            "Payment for services, invoice #123"
+        );
     }
 
     #[test]
@@ -417,7 +461,9 @@ mod tests {
         let csv_output = String::from_utf8(buffer).unwrap();
 
         // Проверяем заголовок
-        assert!(csv_output.starts_with("TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION\n"));
+        assert!(csv_output.starts_with(
+            "TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION\n"
+        ));
 
         // Проверяем наличие данных
         assert!(csv_output.contains("1001,DEPOSIT"));
@@ -483,7 +529,9 @@ mod tests {
         let cursor = Cursor::new(csv);
         let result = CsvParser::parse_records(cursor);
 
-        assert!(matches!(result, Err(ParserError::Parse(msg)) if msg.contains("Unclosed double quote")));
+        assert!(
+            matches!(result, Err(ParserError::Parse(msg)) if msg.contains("Unclosed double quote"))
+        );
     }
 
     #[test]
@@ -535,20 +583,39 @@ mod tests {
     fn test_escape_description() {
         // Все описания должны быть в кавычках
         assert_eq!(CsvParser::escape_description("Simple"), "\"Simple\"");
-        assert_eq!(CsvParser::escape_description("With,comma"), "\"With,comma\"");
-        assert_eq!(CsvParser::escape_description("With\"quote"), "\"With\"\"quote\"");
-        assert_eq!(CsvParser::escape_description("With\nnewline"), "\"With\nnewline\"");
-        assert_eq!(CsvParser::escape_description("With\"multiple\"quotes\"and,comma"),
-                   "\"With\"\"multiple\"\"quotes\"\"and,comma\"");
+        assert_eq!(
+            CsvParser::escape_description("With,comma"),
+            "\"With,comma\""
+        );
+        assert_eq!(
+            CsvParser::escape_description("With\"quote"),
+            "\"With\"\"quote\""
+        );
+        assert_eq!(
+            CsvParser::escape_description("With\nnewline"),
+            "\"With\nnewline\""
+        );
+        assert_eq!(
+            CsvParser::escape_description("With\"multiple\"quotes\"and,comma"),
+            "\"With\"\"multiple\"\"quotes\"\"and,comma\""
+        );
     }
 
     #[test]
     fn test_unescape_description() {
         assert_eq!(CsvParser::unescape_description("\"Simple\""), "Simple");
-        assert_eq!(CsvParser::unescape_description("\"With,comma\""), "With,comma");
-        assert_eq!(CsvParser::unescape_description("\"With\"\"quote\""), "With\"quote");
-        assert_eq!(CsvParser::unescape_description("\"With\"\"multiple\"\"quotes\""),
-                   "With\"multiple\"quotes");
+        assert_eq!(
+            CsvParser::unescape_description("\"With,comma\""),
+            "With,comma"
+        );
+        assert_eq!(
+            CsvParser::unescape_description("\"With\"\"quote\""),
+            "With\"quote"
+        );
+        assert_eq!(
+            CsvParser::unescape_description("\"With\"\"multiple\"\"quotes\""),
+            "With\"multiple\"quotes"
+        );
         assert_eq!(CsvParser::unescape_description("No quotes"), "No quotes");
     }
 

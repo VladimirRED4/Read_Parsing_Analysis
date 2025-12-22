@@ -1,4 +1,6 @@
-use parser_lib::{CsvParser, TextParser, BinaryParser, Transaction, TransactionType, TransactionStatus};
+use parser_lib::{
+    BinaryParser, CsvParser, TextParser, Transaction, TransactionStatus, TransactionType,
+};
 use std::io::Cursor;
 
 #[test]

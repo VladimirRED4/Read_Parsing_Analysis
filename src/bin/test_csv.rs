@@ -1,5 +1,5 @@
+use parser_lib::{CsvParser, Transaction, TransactionStatus, TransactionType};
 use std::io::Cursor;
-use parser_lib::{CsvParser, Transaction, TransactionType, TransactionStatus};
 
 fn main() -> Result<(), parser_lib::ParserError> {
     println!("=== Тестирование CSV формата ===\n");
@@ -16,8 +16,14 @@ fn main() -> Result<(), parser_lib::ParserError> {
 
     println!("   Прочитано {} транзакций:", transactions.len());
     for (i, tx) in transactions.iter().enumerate() {
-        println!("   {}: ID={}, Тип={:?}, Сумма={}, Описание='{}'",
-                 i + 1, tx.tx_id, tx.tx_type, tx.amount, tx.description);
+        println!(
+            "   {}: ID={}, Тип={:?}, Сумма={}, Описание='{}'",
+            i + 1,
+            tx.tx_id,
+            tx.tx_type,
+            tx.amount,
+            tx.description
+        );
     }
 
     // 2. Запись обратно в CSV
@@ -27,8 +33,10 @@ fn main() -> Result<(), parser_lib::ParserError> {
 
     let csv_output = String::from_utf8(buffer).unwrap();
     println!("   Сгенерировано {} байт", csv_output.len());
-    println!("   Первые строки:\n{}",
-             csv_output.lines().take(4).collect::<Vec<_>>().join("\n"));
+    println!(
+        "   Первые строки:\n{}",
+        csv_output.lines().take(4).collect::<Vec<_>>().join("\n")
+    );
 
     // 3. Round-trip тест
     println!("\n3. Round-trip тест:");
@@ -68,7 +76,10 @@ fn main() -> Result<(), parser_lib::ParserError> {
         println!("   ✓ Специальные символы корректно обработаны");
     } else {
         println!("   ✗ Проблема со специальными символами");
-        println!("   Ожидалось: {}", r#"Payment with "quotes" and, comma inside"#);
+        println!(
+            "   Ожидалось: {}",
+            r#"Payment with "quotes" and, comma inside"#
+        );
         println!("   Получено:  {}", parsed_special[0].description);
     }
 
@@ -113,8 +124,13 @@ fn main() -> Result<(), parser_lib::ParserError> {
 
     println!("   Распарсено {} транзакций", parsed_my.len());
     for (i, tx) in parsed_my.iter().enumerate() {
-        println!("   Транзакция {}: ID={}, Тип={:?}, Сумма={}",
-                 i + 1, tx.tx_id, tx.tx_type, tx.amount);
+        println!(
+            "   Транзакция {}: ID={}, Тип={:?}, Сумма={}",
+            i + 1,
+            tx.tx_id,
+            tx.tx_type,
+            tx.amount
+        );
     }
 
     println!("\n=== Все тесты завершены ===");

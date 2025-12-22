@@ -1,17 +1,19 @@
-mod error;
 mod binary_format;
 mod csv_format;
+mod error;
 mod txt_format;
 
-pub use error::ParserError;
 pub use binary_format::{BinaryParser, BinaryRecord};
 pub use csv_format::CsvParser;
+pub use error::ParserError;
 pub use txt_format::TextParser;
 
 use std::io::{Read, Write};
 
 pub trait ParseFromRead<R: Read> {
-    fn parse(reader: &mut R) -> Result<Self, ParserError> where Self: Sized;
+    fn parse(reader: &mut R) -> Result<Self, ParserError>
+    where
+        Self: Sized;
 }
 
 pub trait WriteTo<W: Write> {

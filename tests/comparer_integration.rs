@@ -1,6 +1,6 @@
 use std::fs;
-use std::process::Command;
 use std::path::PathBuf;
+use std::process::Command;
 use tempfile::TempDir;
 
 fn build_and_get_binary(binary_name: &str) -> PathBuf {
@@ -15,16 +15,17 @@ fn build_and_get_binary(binary_name: &str) -> PathBuf {
     assert!(build_status.success(), "Failed to build {}", binary_name);
 
     // Путь к бинарнику
-    let mut binary_path = manifest_dir
-        .join("target")
-        .join("debug")
-        .join(binary_name);
+    let mut binary_path = manifest_dir.join("target").join("debug").join(binary_name);
 
     if cfg!(windows) {
         binary_path.set_extension("exe");
     }
 
-    assert!(binary_path.exists(), "Binary not found at {:?}", binary_path);
+    assert!(
+        binary_path.exists(),
+        "Binary not found at {:?}",
+        binary_path
+    );
     binary_path
 }
 
@@ -37,21 +38,33 @@ fn test_comparer_help() {
         .output()
         .expect("Failed to execute command");
 
-    assert!(output.status.success(), "Command failed:\nStdout: {}\nStderr: {}",
-           String::from_utf8_lossy(&output.stdout),
-           String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "Command failed:\nStdout: {}\nStderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Проверяем наличие всех ключевых аргументов и описания
-    assert!(stdout.contains("Сравнивает транзакции"), "Missing description");
+    assert!(
+        stdout.contains("Сравнивает транзакции"),
+        "Missing description"
+    );
     assert!(stdout.contains("--file1"), "Missing --file1");
     assert!(stdout.contains("--format1"), "Missing --format1");
     assert!(stdout.contains("--file2"), "Missing --file2");
     assert!(stdout.contains("--format2"), "Missing --format2");
     assert!(stdout.contains("--verbose"), "Missing --verbose");
-    assert!(stdout.contains("--ignore-description"), "Missing --ignore-description");
-    assert!(stdout.contains("--ignore-status"), "Missing --ignore-status");
+    assert!(
+        stdout.contains("--ignore-description"),
+        "Missing --ignore-description"
+    );
+    assert!(
+        stdout.contains("--ignore-status"),
+        "Missing --ignore-status"
+    );
 }
 
 #[test]
@@ -68,7 +81,11 @@ fn test_comparer_version() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Проверяем что содержит версию
-    assert!(stdout.contains("0.1"), "Version 0.1 not found. Output: {}", stdout);
+    assert!(
+        stdout.contains("0.1"),
+        "Version 0.1 not found. Output: {}",
+        stdout
+    );
 }
 
 #[test]
@@ -87,10 +104,16 @@ fn test_comparer_identical_files() {
     fs::write(&csv2_path, csv_content).unwrap();
 
     let output = Command::new(&binary_path)
-        .args(["--file1", csv1_path.to_str().unwrap(),
-               "--format1", "csv",
-               "--file2", csv2_path.to_str().unwrap(),
-               "--format2", "csv"])
+        .args([
+            "--file1",
+            csv1_path.to_str().unwrap(),
+            "--format1",
+            "csv",
+            "--file2",
+            csv2_path.to_str().unwrap(),
+            "--format2",
+            "csv",
+        ])
         .output()
         .expect("Failed to execute command");
 
@@ -118,10 +141,16 @@ fn test_comparer_different_files() {
     fs::write(&csv2_path, csv2_content).unwrap();
 
     let output = Command::new(&binary_path)
-        .args(["--file1", csv1_path.to_str().unwrap(),
-               "--format1", "csv",
-               "--file2", csv2_path.to_str().unwrap(),
-               "--format2", "csv"])
+        .args([
+            "--file1",
+            csv1_path.to_str().unwrap(),
+            "--format1",
+            "csv",
+            "--file2",
+            csv2_path.to_str().unwrap(),
+            "--format2",
+            "csv",
+        ])
         .output()
         .expect("Failed to execute command");
 
@@ -155,10 +184,16 @@ DESCRIPTION: "Test""#;
     fs::write(&txt_path, txt_content).unwrap();
 
     let output = Command::new(&binary_path)
-        .args(["--file1", csv_path.to_str().unwrap(),
-               "--format1", "csv",
-               "--file2", txt_path.to_str().unwrap(),
-               "--format2", "txt"])
+        .args([
+            "--file1",
+            csv_path.to_str().unwrap(),
+            "--format1",
+            "csv",
+            "--file2",
+            txt_path.to_str().unwrap(),
+            "--format2",
+            "txt",
+        ])
         .output()
         .expect("Failed to execute command");
 
@@ -173,10 +208,16 @@ fn test_comparer_missing_file() {
     let binary_path = build_and_get_binary("comparer");
 
     let output = Command::new(&binary_path)
-        .args(["--file1", "non_existent1.csv",
-               "--format1", "csv",
-               "--file2", "non_existent2.csv",
-               "--format2", "csv"])
+        .args([
+            "--file1",
+            "non_existent1.csv",
+            "--format1",
+            "csv",
+            "--file2",
+            "non_existent2.csv",
+            "--format2",
+            "csv",
+        ])
         .output()
         .expect("Failed to execute command");
 
@@ -206,11 +247,17 @@ fn test_comparer_ignore_description() {
 
     // С опцией --ignore-description файлы должны считаться одинаковыми
     let output = Command::new(&binary_path)
-        .args(["--file1", csv1_path.to_str().unwrap(),
-               "--format1", "csv",
-               "--file2", csv2_path.to_str().unwrap(),
-               "--format2", "csv",
-               "--ignore-description"])
+        .args([
+            "--file1",
+            csv1_path.to_str().unwrap(),
+            "--format1",
+            "csv",
+            "--file2",
+            csv2_path.to_str().unwrap(),
+            "--format2",
+            "csv",
+            "--ignore-description",
+        ])
         .output()
         .expect("Failed to execute command");
 
@@ -239,10 +286,16 @@ fn test_comparer_different_lengths() {
     fs::write(&csv2_path, csv2_content).unwrap();
 
     let output = Command::new(&binary_path)
-        .args(["--file1", csv1_path.to_str().unwrap(),
-               "--format1", "csv",
-               "--file2", csv2_path.to_str().unwrap(),
-               "--format2", "csv"])
+        .args([
+            "--file1",
+            csv1_path.to_str().unwrap(),
+            "--format1",
+            "csv",
+            "--file2",
+            csv2_path.to_str().unwrap(),
+            "--format2",
+            "csv",
+        ])
         .output()
         .expect("Failed to execute command");
 

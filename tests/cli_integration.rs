@@ -1,7 +1,7 @@
-use std::process::Command;
-use std::path::PathBuf;
 use std::fs::{self, File};
 use std::io::Write;
+use std::path::PathBuf;
+use std::process::Command;
 use tempfile::TempDir;
 
 fn build_and_get_binary() -> PathBuf {
@@ -25,7 +25,11 @@ fn build_and_get_binary() -> PathBuf {
         binary_path.set_extension("exe");
     }
 
-    assert!(binary_path.exists(), "Binary not found at {:?}", binary_path);
+    assert!(
+        binary_path.exists(),
+        "Binary not found at {:?}",
+        binary_path
+    );
     binary_path
 }
 
@@ -67,23 +71,39 @@ fn test_csv_to_txt() {
     // Создаем тестовый CSV файл
     let csv_path = temp_dir.path().join("test.csv");
     let mut csv_file = File::create(&csv_path).unwrap();
-    writeln!(csv_file, "TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION").unwrap();
-    writeln!(csv_file, "1001,DEPOSIT,0,501,50000,1672531200000,SUCCESS,\"Test deposit\"").unwrap();
+    writeln!(
+        csv_file,
+        "TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION"
+    )
+    .unwrap();
+    writeln!(
+        csv_file,
+        "1001,DEPOSIT,0,501,50000,1672531200000,SUCCESS,\"Test deposit\""
+    )
+    .unwrap();
 
     let output_path = temp_dir.path().join("output.txt");
 
     let output = Command::new(&binary_path)
-        .args(["--input", csv_path.to_str().unwrap(),
-               "--input-format", "csv",
-               "--output-format", "txt",
-               "--output", output_path.to_str().unwrap()])
+        .args([
+            "--input",
+            csv_path.to_str().unwrap(),
+            "--input-format",
+            "csv",
+            "--output-format",
+            "txt",
+            "--output",
+            output_path.to_str().unwrap(),
+        ])
         .output()
         .expect("Failed to execute command");
 
-    assert!(output.status.success(),
-           "Command failed:\nStdout: {}\nStderr: {}",
-           String::from_utf8_lossy(&output.stdout),
-           String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "Command failed:\nStdout: {}\nStderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 
     assert!(output_path.exists());
     let content = fs::read_to_string(&output_path).unwrap();
@@ -96,9 +116,14 @@ fn test_missing_file_error() {
     let binary_path = build_and_get_binary();
 
     let output = Command::new(&binary_path)
-        .args(["--input", "non_existent_file.csv",
-               "--input-format", "csv",
-               "--output-format", "txt"])
+        .args([
+            "--input",
+            "non_existent_file.csv",
+            "--input-format",
+            "csv",
+            "--output-format",
+            "txt",
+        ])
         .output()
         .expect("Failed to execute command");
 

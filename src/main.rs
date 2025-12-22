@@ -81,7 +81,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             eprintln!("\nПример использования:");
-            eprintln!("  ypbank_converter --input examples/records_example.csv --input-format csv --output-format txt");
+            eprintln!(
+                "  ypbank_converter --input examples/records_example.csv --input-format csv --output-format txt"
+            );
         }
         std::process::exit(1);
     }
@@ -107,22 +109,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if args.verbose {
         eprintln!("Прочитано {} транзакций", transactions.len());
         if !transactions.is_empty() {
-            eprintln!("Первая транзакция: ID={}, Тип={:?}, Сумма={}, Статус={:?}",
-                     transactions[0].tx_id,
-                     transactions[0].tx_type,
-                     transactions[0].amount,
-                     transactions[0].status);
+            eprintln!(
+                "Первая транзакция: ID={}, Тип={:?}, Сумма={}, Статус={:?}",
+                transactions[0].tx_id,
+                transactions[0].tx_type,
+                transactions[0].amount,
+                transactions[0].status
+            );
             if transactions.len() > 1 {
-                eprintln!("Последняя транзакция: ID={}, Тип={:?}, Сумма={}",
-                         transactions.last().unwrap().tx_id,
-                         transactions.last().unwrap().tx_type,
-                         transactions.last().unwrap().amount);
+                eprintln!(
+                    "Последняя транзакция: ID={}, Тип={:?}, Сумма={}",
+                    transactions.last().unwrap().tx_id,
+                    transactions.last().unwrap().tx_type,
+                    transactions.last().unwrap().amount
+                );
             }
         }
     }
 
     // Запись транзакций в выходной формат
-    write_transactions(&transactions, &args.output_format, args.output.as_ref(), args.verbose)?;
+    write_transactions(
+        &transactions,
+        &args.output_format,
+        args.output.as_ref(),
+        args.verbose,
+    )?;
 
     if args.verbose {
         eprintln!("Конвертация завершена успешно!");
@@ -135,9 +146,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn read_transactions(
     input_path: &Path,
     format: &Format,
-    skip_validation: bool
+    skip_validation: bool,
 ) -> Result<Vec<Transaction>, Box<dyn std::error::Error>> {
-
     // Открываем файл
     let file = File::open(input_path)
         .map_err(|e| format!("Не удалось открыть файл '{}': {}", input_path.display(), e))?;
@@ -152,8 +162,7 @@ fn read_transactions(
             let file = File::open(input_path)
                 .map_err(|e| format!("Не удалось открыть CSV файл: {}", e))?;
 
-            CsvParser::parse_records(file)
-                .map_err(|e| format!("Ошибка парсинга CSV: {}", e).into())
+            CsvParser::parse_records(file).map_err(|e| format!("Ошибка парсинга CSV: {}", e).into())
         }
         Format::Txt => {
             // Для текстового формата также используем файл напрямую
@@ -172,7 +181,9 @@ fn read_transactions(
             if reader.read_exact(&mut magic).is_ok() {
                 let expected_magic = [0x59, 0x50, 0x42, 0x4E]; // "YPBN"
                 if magic != expected_magic {
-                    eprintln!("Предупреждение: файл не начинается с ожидаемого магического числа 'YPBN'");
+                    eprintln!(
+                        "Предупреждение: файл не начинается с ожидаемого магического числа 'YPBN'"
+                    );
                     eprintln!("  Получено: {:?}", magic);
                     eprintln!("  Ожидалось: {:?}", expected_magic);
                     eprintln!("  Продолжаем парсинг, но возможны ошибки...");
@@ -196,7 +207,6 @@ fn write_transactions(
     output_path: Option<&PathBuf>,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-
     if verbose && output_path.is_none() {
         eprintln!("Вывод будет отправлен в стандартный вывод (stdout)");
         eprintln!("Используйте --output <файл> для сохранения в файл");
@@ -238,9 +248,12 @@ fn write_to_writer<W: std::io::Write>(
     writer: &mut W,
     verbose: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-
     if verbose {
-        eprintln!("Запись {} транзакций в формат {:?}...", transactions.len(), format);
+        eprintln!(
+            "Запись {} транзакций в формат {:?}...",
+            transactions.len(),
+            format
+        );
     }
 
     match format {
@@ -261,8 +274,10 @@ fn write_to_writer<W: std::io::Write>(
         Format::Bin => {
             if verbose {
                 eprintln!("Формат: Binary (магическое число YPBN + бинарные данные)");
-                eprintln!("Размер одной записи: ~{} байт + размер описания",
-                          std::mem::size_of::<u64>() * 5 + 2); // 5 u64 + 2 u8
+                eprintln!(
+                    "Размер одной записи: ~{} байт + размер описания",
+                    std::mem::size_of::<u64>() * 5 + 2
+                ); // 5 u64 + 2 u8
             }
             BinaryParser::write_records(transactions, writer)
                 .map_err(|e| format!("Ошибка записи бинарного формата: {}", e).into())

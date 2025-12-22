@@ -1,6 +1,6 @@
-use crate::{Transaction, TransactionType, TransactionStatus, ParserError};
-use std::io::{Read, Write};
+use crate::{ParserError, Transaction, TransactionStatus, TransactionType};
 use std::collections::HashMap;
+use std::io::{Read, Write};
 
 /// Парсер для текстового формата YPBankText
 pub struct TextParser;
@@ -8,8 +8,7 @@ pub struct TextParser;
 impl TextParser {
     /// Читает все записи из текстового источника
     pub fn parse_records<R: Read>(reader: R) -> Result<Vec<Transaction>, ParserError> {
-        let content = std::io::read_to_string(reader)
-            .map_err(ParserError::Io)?;
+        let content = std::io::read_to_string(reader).map_err(ParserError::Io)?;
 
         let mut records = Vec::new();
         let mut current_record: HashMap<String, String> = HashMap::new();
@@ -39,9 +38,10 @@ impl TextParser {
             match Self::parse_key_value(trimmed, line_number) {
                 Ok((key, value)) => {
                     if current_record.contains_key(&key) {
-                        return Err(ParserError::Parse(
-                            format!("Line {}: duplicate field '{}'", line_number, key)
-                        ));
+                        return Err(ParserError::Parse(format!(
+                            "Line {}: duplicate field '{}'",
+                            line_number, key
+                        )));
                     }
                     current_record.insert(key, value);
                 }
@@ -59,23 +59,34 @@ impl TextParser {
     }
 
     /// Записывает все записи в текстовый приёмник
-    pub fn write_records<W: Write>(records: &[Transaction], writer: &mut W) -> Result<(), ParserError> {
+    pub fn write_records<W: Write>(
+        records: &[Transaction],
+        writer: &mut W,
+    ) -> Result<(), ParserError> {
         for (i, record) in records.iter().enumerate() {
             if i > 0 {
                 writeln!(writer).map_err(ParserError::Io)?; // Пустая строка между записями
             }
 
-            writeln!(writer, "# Record {} ({:?})", i + 1, record.tx_type).map_err(ParserError::Io)?;
+            writeln!(writer, "# Record {} ({:?})", i + 1, record.tx_type)
+                .map_err(ParserError::Io)?;
 
             // Записываем поля в фиксированном порядке для читаемости
             writeln!(writer, "TX_ID: {}", record.tx_id).map_err(ParserError::Io)?;
-            writeln!(writer, "TX_TYPE: {}", Self::tx_type_to_str(record.tx_type)).map_err(ParserError::Io)?;
+            writeln!(writer, "TX_TYPE: {}", Self::tx_type_to_str(record.tx_type))
+                .map_err(ParserError::Io)?;
             writeln!(writer, "FROM_USER_ID: {}", record.from_user_id).map_err(ParserError::Io)?;
             writeln!(writer, "TO_USER_ID: {}", record.to_user_id).map_err(ParserError::Io)?;
             writeln!(writer, "AMOUNT: {}", record.amount).map_err(ParserError::Io)?;
             writeln!(writer, "TIMESTAMP: {}", record.timestamp).map_err(ParserError::Io)?;
-            writeln!(writer, "STATUS: {}", Self::status_to_str(record.status)).map_err(ParserError::Io)?;
-            writeln!(writer, "DESCRIPTION: \"{}\"", Self::escape_description(&record.description)).map_err(ParserError::Io)?;
+            writeln!(writer, "STATUS: {}", Self::status_to_str(record.status))
+                .map_err(ParserError::Io)?;
+            writeln!(
+                writer,
+                "DESCRIPTION: \"{}\"",
+                Self::escape_description(&record.description)
+            )
+            .map_err(ParserError::Io)?;
         }
 
         Ok(())
@@ -86,34 +97,48 @@ impl TextParser {
         let parts: Vec<&str> = line.splitn(2, ':').collect();
 
         if parts.len() != 2 {
-            return Err(ParserError::Parse(
-                format!("Line {}: expected 'KEY: VALUE' format, got '{}'", line_number, line)
-            ));
+            return Err(ParserError::Parse(format!(
+                "Line {}: expected 'KEY: VALUE' format, got '{}'",
+                line_number, line
+            )));
         }
 
         let key = parts[0].trim().to_string();
         let value = parts[1].trim().to_string();
 
         if key.is_empty() {
-            return Err(ParserError::Parse(
-                format!("Line {}: empty key", line_number)
-            ));
+            return Err(ParserError::Parse(format!(
+                "Line {}: empty key",
+                line_number
+            )));
         }
 
         Ok((key, value))
     }
 
     /// Парсит запись из HashMap полей
-    fn parse_record(fields: &HashMap<String, String>, line_number: usize) -> Result<Transaction, ParserError> {
+    fn parse_record(
+        fields: &HashMap<String, String>,
+        line_number: usize,
+    ) -> Result<Transaction, ParserError> {
         // Проверяем наличие всех обязательных полей
-        let required_fields = ["TX_ID", "TX_TYPE", "FROM_USER_ID", "TO_USER_ID",
-                               "AMOUNT", "TIMESTAMP", "STATUS", "DESCRIPTION"];
+        let required_fields = [
+            "TX_ID",
+            "TX_TYPE",
+            "FROM_USER_ID",
+            "TO_USER_ID",
+            "AMOUNT",
+            "TIMESTAMP",
+            "STATUS",
+            "DESCRIPTION",
+        ];
 
         for &field in &required_fields {
             if !fields.contains_key(field) {
-                return Err(ParserError::Parse(
-                    format!("Missing required field: {}", field)
-                ));
+                return Err(ParserError::Parse(format!(
+                    "Missing required field: {}",
+                    field
+                )));
             }
         }
 
@@ -143,94 +168,121 @@ impl TextParser {
     }
 
     /// Парсит поле типа u64
-    fn parse_u64_field(fields: &HashMap<String, String>, field_name: &str, line_number: usize) -> Result<u64, ParserError> {
-        let value = fields.get(field_name)
+    fn parse_u64_field(
+        fields: &HashMap<String, String>,
+        field_name: &str,
+        line_number: usize,
+    ) -> Result<u64, ParserError> {
+        let value = fields
+            .get(field_name)
             .ok_or_else(|| ParserError::Parse(format!("Field {} not found", field_name)))?;
 
-        value.parse::<u64>()
-            .map_err(|e| ParserError::Parse(
-                format!("Line {}: invalid {} '{}': {}", line_number, field_name, value, e)
+        value.parse::<u64>().map_err(|e| {
+            ParserError::Parse(format!(
+                "Line {}: invalid {} '{}': {}",
+                line_number, field_name, value, e
             ))
+        })
     }
 
     /// Парсит поле типа i64 (всегда положительное в текстовом формате)
-    fn parse_i64_field(fields: &HashMap<String, String>, field_name: &str, line_number: usize) -> Result<i64, ParserError> {
-        let value = fields.get(field_name)
+    fn parse_i64_field(
+        fields: &HashMap<String, String>,
+        field_name: &str,
+        line_number: usize,
+    ) -> Result<i64, ParserError> {
+        let value = fields
+            .get(field_name)
             .ok_or_else(|| ParserError::Parse(format!("Field {} not found", field_name)))?;
 
         // Убираем возможные комментарии и пробелы
         let clean_value = value.split('#').next().unwrap_or(value).trim();
 
-        let amount = clean_value.parse::<i64>()
-            .map_err(|e| ParserError::Parse(
-                format!("Line {}: invalid {} '{}': {}", line_number, field_name, clean_value, e)
-            ))?;
+        let amount = clean_value.parse::<i64>().map_err(|e| {
+            ParserError::Parse(format!(
+                "Line {}: invalid {} '{}': {}",
+                line_number, field_name, clean_value, e
+            ))
+        })?;
 
         // Проверяем что сумма положительная
         if amount <= 0 {
-            return Err(ParserError::Parse(
-                format!("Line {}: {} must be positive, got {}", line_number, field_name, amount)
-            ));
+            return Err(ParserError::Parse(format!(
+                "Line {}: {} must be positive, got {}",
+                line_number, field_name, amount
+            )));
         }
 
         Ok(amount)
     }
 
     /// Парсит тип транзакции
-    fn parse_tx_type(fields: &HashMap<String, String>, line_number: usize) -> Result<TransactionType, ParserError> {
-        let value = fields.get("TX_TYPE")
+    fn parse_tx_type(
+        fields: &HashMap<String, String>,
+        line_number: usize,
+    ) -> Result<TransactionType, ParserError> {
+        let value = fields
+            .get("TX_TYPE")
             .ok_or_else(|| ParserError::Parse("Field TX_TYPE not found".to_string()))?;
 
         match value.to_uppercase().as_str() {
             "DEPOSIT" => Ok(TransactionType::Deposit),
             "TRANSFER" => Ok(TransactionType::Transfer),
             "WITHDRAWAL" => Ok(TransactionType::Withdrawal),
-            other => Err(ParserError::Parse(
-                format!("Line {}: invalid TX_TYPE '{}', must be DEPOSIT, TRANSFER, or WITHDRAWAL",
-                        line_number, other)
-            )),
+            other => Err(ParserError::Parse(format!(
+                "Line {}: invalid TX_TYPE '{}', must be DEPOSIT, TRANSFER, or WITHDRAWAL",
+                line_number, other
+            ))),
         }
     }
 
     /// Парсит статус транзакции
-    fn parse_status(fields: &HashMap<String, String>, line_number: usize) -> Result<TransactionStatus, ParserError> {
-        let value = fields.get("STATUS")
+    fn parse_status(
+        fields: &HashMap<String, String>,
+        line_number: usize,
+    ) -> Result<TransactionStatus, ParserError> {
+        let value = fields
+            .get("STATUS")
             .ok_or_else(|| ParserError::Parse("Field STATUS not found".to_string()))?;
 
         match value.to_uppercase().as_str() {
             "SUCCESS" => Ok(TransactionStatus::Success),
             "FAILURE" => Ok(TransactionStatus::Failure),
             "PENDING" => Ok(TransactionStatus::Pending),
-            other => Err(ParserError::Parse(
-                format!("Line {}: invalid STATUS '{}', must be SUCCESS, FAILURE, or PENDING",
-                        line_number, other)
-            )),
+            other => Err(ParserError::Parse(format!(
+                "Line {}: invalid STATUS '{}', must be SUCCESS, FAILURE, or PENDING",
+                line_number, other
+            ))),
         }
     }
 
     /// Парсит описание (убирает окружающие кавычки)
-    fn parse_description(fields: &HashMap<String, String>, line_number: usize) -> Result<String, ParserError> {
-        let value = fields.get("DESCRIPTION")
+    fn parse_description(
+        fields: &HashMap<String, String>,
+        line_number: usize,
+    ) -> Result<String, ParserError> {
+        let value = fields
+            .get("DESCRIPTION")
             .ok_or_else(|| ParserError::Parse("Field DESCRIPTION not found".to_string()))?;
 
         let trimmed = value.trim();
 
         // Проверяем что описание в кавычках
         if !(trimmed.starts_with('"') && trimmed.ends_with('"')) {
-            return Err(ParserError::Parse(
-                format!("Line {}: DESCRIPTION must be in double quotes, got '{}'",
-                        line_number, value)
-            ));
+            return Err(ParserError::Parse(format!(
+                "Line {}: DESCRIPTION must be in double quotes, got '{}'",
+                line_number, value
+            )));
         }
 
         // Убираем кавычки и разэкранируем
-        let content = &trimmed[1..trimmed.len()-1];
+        let content = &trimmed[1..trimmed.len() - 1];
         let unescaped = Self::unescape_description(content);
 
         Ok(unescaped)
     }
 
-        /// Валидирует запись согласно бизнес-правилам
+    /// Валидирует запись согласно бизнес-правилам
     fn validate_record(
         tx_type: TransactionType,
         from_user_id: u64,
@@ -244,30 +296,32 @@ impl TextParser {
         match tx_type {
             TransactionType::Deposit => {
                 if from_user_id != 0 {
-                    return Err(ParserError::Parse(
-                        format!("Line {}: DEPOSIT must have FROM_USER_ID = 0, got {}",
-                                line_number, from_user_id)
-                    ));
+                    return Err(ParserError::Parse(format!(
+                        "Line {}: DEPOSIT must have FROM_USER_ID = 0, got {}",
+                        line_number, from_user_id
+                    )));
                 }
             }
             TransactionType::Withdrawal => {
                 if to_user_id != 0 {
-                    return Err(ParserError::Parse(
-                        format!("Line {}: WITHDRAWAL must have TO_USER_ID = 0, got {}",
-                                line_number, to_user_id)
-                    ));
+                    return Err(ParserError::Parse(format!(
+                        "Line {}: WITHDRAWAL must have TO_USER_ID = 0, got {}",
+                        line_number, to_user_id
+                    )));
                 }
             }
             TransactionType::Transfer => {
                 if from_user_id == 0 {
-                    return Err(ParserError::Parse(
-                        format!("Line {}: TRANSFER cannot have FROM_USER_ID = 0", line_number)
-                    ));
+                    return Err(ParserError::Parse(format!(
+                        "Line {}: TRANSFER cannot have FROM_USER_ID = 0",
+                        line_number
+                    )));
                 }
                 if to_user_id == 0 {
-                    return Err(ParserError::Parse(
-                        format!("Line {}: TRANSFER cannot have TO_USER_ID = 0", line_number)
-                    ));
+                    return Err(ParserError::Parse(format!(
+                        "Line {}: TRANSFER cannot have TO_USER_ID = 0",
+                        line_number
+                    )));
                 }
             }
         }
@@ -363,7 +417,10 @@ DESCRIPTION: "User withdrawal""#;
 
         // Проверяем третью запись
         assert_eq!(transactions[2].tx_id, 3213213213213213);
-        assert!(matches!(transactions[2].tx_type, TransactionType::Withdrawal));
+        assert!(matches!(
+            transactions[2].tx_type,
+            TransactionType::Withdrawal
+        ));
         assert_eq!(transactions[2].amount, 100); // Положительная для WITHDRAWAL
     }
 
@@ -589,8 +646,14 @@ DESCRIPTION: "Test with \"quotes\" inside""#;
 
         for i in 0..original_transactions.len() {
             assert_eq!(original_transactions[i].tx_id, parsed_transactions[i].tx_id);
-            assert_eq!(original_transactions[i].tx_type, parsed_transactions[i].tx_type);
-            assert_eq!(original_transactions[i].description, parsed_transactions[i].description);
+            assert_eq!(
+                original_transactions[i].tx_type,
+                parsed_transactions[i].tx_type
+            );
+            assert_eq!(
+                original_transactions[i].description,
+                parsed_transactions[i].description
+            );
         }
     }
 
