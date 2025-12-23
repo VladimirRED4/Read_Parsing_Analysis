@@ -66,18 +66,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let examples_dir = Path::new("examples");
         if examples_dir.exists() {
             eprintln!("Доступные примеры файлов в папке 'examples/':");
-            for entry in std::fs::read_dir(examples_dir)? {
-                if let Ok(entry) = entry {
-                    if let Some(ext) = entry.path().extension() {
-                        let ext_str = ext.to_string_lossy();
-                        let format = match ext_str.to_lowercase().as_str() {
-                            "csv" => "CSV",
-                            "txt" => "Text",
-                            "bin" => "Binary",
-                            _ => "Unknown",
-                        };
-                        eprintln!("  - {} ({})", entry.path().display(), format);
-                    }
+            for entry in std::fs::read_dir(examples_dir)?.flatten() {
+                if let Some(ext) = entry.path().extension() {
+                    let ext_str = ext.to_string_lossy();
+                    let format = match ext_str.to_lowercase().as_str() {
+                        "csv" => "CSV",
+                        "txt" => "Text",
+                        "bin" => "Binary",
+                        _ => "Unknown",
+                    };
+                    eprintln!("  - {} ({})", entry.path().display(), format);
                 }
             }
             eprintln!("\nПример использования:");
@@ -220,10 +218,8 @@ fn write_transactions(
     match output_path {
         Some(path) => {
             // Проверяем возможность записи
-            if path.exists() {
-                if verbose {
-                    eprintln!("Файл '{}' будет перезаписан", path.display());
-                }
+            if path.exists() && verbose {
+                eprintln!("Файл '{}' будет перезаписан", path.display());
             }
 
             // Запись в файл

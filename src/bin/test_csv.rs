@@ -1,5 +1,6 @@
 use parser_lib::{CsvParser, Transaction, TransactionStatus, TransactionType};
 use std::io::Cursor;
+use std::slice::from_ref;
 
 fn main() -> Result<(), parser_lib::ParserError> {
     println!("=== Тестирование CSV формата ===\n");
@@ -63,7 +64,7 @@ fn main() -> Result<(), parser_lib::ParserError> {
     };
 
     let mut buffer2 = Vec::new();
-    CsvParser::write_records(&[special_transaction.clone()], &mut buffer2)?;
+    CsvParser::write_records(from_ref(&special_transaction), &mut buffer2)?;
 
     let csv_special = String::from_utf8(buffer2).unwrap();
     println!("   Сгенерированный CSV:");
@@ -77,8 +78,7 @@ fn main() -> Result<(), parser_lib::ParserError> {
     } else {
         println!("   ✗ Проблема со специальными символами");
         println!(
-            "   Ожидалось: {}",
-            r#"Payment with "quotes" and, comma inside"#
+            "   Ожидалось: Payment with \"quotes\" and, comma inside"
         );
         println!("   Получено:  {}", parsed_special[0].description);
     }

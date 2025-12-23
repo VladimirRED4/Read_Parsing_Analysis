@@ -1,5 +1,6 @@
 use parser_lib::{TextParser, Transaction, TransactionStatus, TransactionType};
 use std::io::Cursor;
+use std::slice::from_ref;
 
 fn main() -> Result<(), parser_lib::ParserError> {
     println!("=== Тестирование текстового формата ===\n");
@@ -178,7 +179,7 @@ DESCRIPTION: "Record number 12""#;
     };
 
     let mut buffer2 = Vec::new();
-    TextParser::write_records(&[special_transaction.clone()], &mut buffer2)?;
+    TextParser::write_records(from_ref(&special_transaction), &mut buffer2)?;
 
     let text_special = String::from_utf8(buffer2).unwrap();
     println!("   Сгенерированный текст:");
@@ -193,7 +194,7 @@ DESCRIPTION: "Record number 12""#;
         println!("   ✓ Кавычки корректно экранированы и разэкранированы");
     } else {
         println!("   ✗ Проблема с кавычками");
-        println!("   Ожидалось: {}", r#"Payment with "quotes" inside"#);
+        println!("   Ожидалось: Payment with \"quotes\" inside");
         println!("   Получено:  {}", parsed_special[0].description);
     }
 
