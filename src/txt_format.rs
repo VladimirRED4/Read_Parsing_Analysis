@@ -57,7 +57,7 @@ impl TextParser {
     ) -> Result<(), ParserError> {
         for (i, record) in records.iter().enumerate() {
             if i > 0 {
-                writeln!(writer).map_err(ParserError::Io)?; // Пустая строка между записями
+                writeln!(writer).map_err(ParserError::Io)?;
             }
 
             writeln!(writer, "# Record {} ({:?})", i + 1, record.tx_type)
@@ -146,7 +146,7 @@ impl TextParser {
             tx_type,
             from_user_id,
             to_user_id,
-            amount, // Всегда положительная сумма в текстовом формате
+            amount,
             timestamp,
             status,
             description,
@@ -263,10 +263,9 @@ impl TextParser {
         tx_type: TransactionType,
         from_user_id: u64,
         to_user_id: u64,
-        _amount: i64, // Всегда положительное в текстовом формате (уже проверено в parse_i64_field)
+        _amount: i64,
         line_number: usize,
     ) -> Result<(), ParserError> {
-
         match tx_type {
             TransactionType::Deposit => {
                 if from_user_id != 0 {
@@ -374,7 +373,7 @@ DESCRIPTION: "User withdrawal""#;
         assert!(matches!(transactions[0].tx_type, TransactionType::Deposit));
         assert_eq!(transactions[0].from_user_id, 0);
         assert_eq!(transactions[0].to_user_id, 9876543210987654);
-        assert_eq!(transactions[0].amount, 10000); // Положительная
+        assert_eq!(transactions[0].amount, 10000);
         assert_eq!(transactions[0].timestamp, 1633036800000);
         assert!(matches!(transactions[0].status, TransactionStatus::Success));
         assert_eq!(transactions[0].description, "Terminal deposit");
@@ -388,7 +387,7 @@ DESCRIPTION: "User withdrawal""#;
             transactions[2].tx_type,
             TransactionType::Withdrawal
         ));
-        assert_eq!(transactions[2].amount, 100); // Положительная для WITHDRAWAL
+        assert_eq!(transactions[2].amount, 100);
     }
 
     #[test]
@@ -589,7 +588,7 @@ DESCRIPTION: "Test with \"quotes\" inside""#;
                 tx_type: TransactionType::Withdrawal,
                 from_user_id: 1234567890,
                 to_user_id: 0,
-                amount: 50000, // Положительная для WITHDRAWAL
+                amount: 50000,
                 timestamp: 1672534800000,
                 status: TransactionStatus::Pending,
                 description: "Test withdrawal".to_string(),
