@@ -6,7 +6,6 @@ use tempfile::TempDir;
 fn build_and_get_binary(binary_name: &str) -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
-    // Собираем бинарник
     let build_status = Command::new("cargo")
         .args(["build", "--bin", binary_name, "--quiet"])
         .status()
@@ -14,7 +13,6 @@ fn build_and_get_binary(binary_name: &str) -> PathBuf {
 
     assert!(build_status.success(), "Failed to build {}", binary_name);
 
-    // Путь к бинарнику
     let mut binary_path = manifest_dir.join("target").join("debug").join(binary_name);
 
     if cfg!(windows) {
@@ -47,7 +45,6 @@ fn test_comparer_help() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Проверяем наличие всех ключевых аргументов и описания
     assert!(
         stdout.contains("Сравнивает транзакции"),
         "Missing description"
@@ -76,11 +73,9 @@ fn test_comparer_version() {
         .output()
         .expect("Failed to execute command");
 
-    // Версия должна работать
     assert!(output.status.success(), "Command failed: {:?}", output);
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Проверяем что содержит версию
     assert!(
         stdout.contains("0.1"),
         "Version 0.1 not found. Output: {}",
@@ -93,7 +88,6 @@ fn test_comparer_identical_files() {
     let binary_path = build_and_get_binary("comparer");
     let temp_dir = TempDir::new().unwrap();
 
-    // Создаем два одинаковых CSV файла
     let csv1_path = temp_dir.path().join("file1.csv");
     let csv2_path = temp_dir.path().join("file2.csv");
 
@@ -127,7 +121,6 @@ fn test_comparer_different_files() {
     let binary_path = build_and_get_binary("comparer");
     let temp_dir = TempDir::new().unwrap();
 
-    // Создаем два разных CSV файла
     let csv1_path = temp_dir.path().join("file1.csv");
     let csv2_path = temp_dir.path().join("file2.csv");
 
@@ -156,7 +149,6 @@ fn test_comparer_different_files() {
 
     assert!(output.status.success(), "Command failed: {:?}", output);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Должен сообщить о несовпадении
     assert!(stdout.contains("несоответствий") || stdout.contains("AMOUNT:"));
 }
 
@@ -165,13 +157,11 @@ fn test_comparer_different_formats() {
     let binary_path = build_and_get_binary("comparer");
     let temp_dir = TempDir::new().unwrap();
 
-    // Создаем CSV файл
     let csv_path = temp_dir.path().join("file.csv");
     let csv_content = "TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION\n\
                        1001,DEPOSIT,0,501,50000,1672531200000,SUCCESS,\"Test\"";
     fs::write(&csv_path, csv_content).unwrap();
 
-    // Создаем текстовый файл с теми же данными
     let txt_path = temp_dir.path().join("file.txt");
     let txt_content = r#"TX_ID: 1001
 TX_TYPE: DEPOSIT
@@ -199,7 +189,6 @@ DESCRIPTION: "Test""#;
 
     assert!(output.status.success(), "Command failed: {:?}", output);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Файлы должны быть идентичными
     assert!(stdout.contains("идентичны"));
 }
 
@@ -221,7 +210,6 @@ fn test_comparer_missing_file() {
         .output()
         .expect("Failed to execute command");
 
-    // Должен завершиться с ошибкой
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("не найден"));
@@ -232,7 +220,6 @@ fn test_comparer_ignore_description() {
     let binary_path = build_and_get_binary("comparer");
     let temp_dir = TempDir::new().unwrap();
 
-    // Создаем два CSV файла с разными описаниями
     let csv1_path = temp_dir.path().join("file1.csv");
     let csv2_path = temp_dir.path().join("file2.csv");
 
@@ -245,7 +232,6 @@ fn test_comparer_ignore_description() {
     fs::write(&csv1_path, csv1_content).unwrap();
     fs::write(&csv2_path, csv2_content).unwrap();
 
-    // С опцией --ignore-description файлы должны считаться одинаковыми
     let output = Command::new(&binary_path)
         .args([
             "--file1",
@@ -271,7 +257,6 @@ fn test_comparer_different_lengths() {
     let binary_path = build_and_get_binary("comparer");
     let temp_dir = TempDir::new().unwrap();
 
-    // Создаем CSV файлы с разным количеством транзакций
     let csv1_path = temp_dir.path().join("file1.csv");
     let csv2_path = temp_dir.path().join("file2.csv");
 
@@ -301,6 +286,5 @@ fn test_comparer_different_lengths() {
 
     assert!(output.status.success(), "Command failed: {:?}", output);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // Должен сообщить о разном количестве транзакций
     assert!(stdout.contains("разное количество") || stdout.contains("2 транзакций"));
 }

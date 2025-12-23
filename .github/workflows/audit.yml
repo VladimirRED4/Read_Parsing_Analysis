@@ -2,11 +2,13 @@ name: Security Audit
 
 on:
   schedule:
-    - cron: '0 0 * * 0'  # Раз в неделю
+    # Run weekly on Sunday at midnight
+    - cron: '0 0 * * 0'
   push:
     paths:
       - '**/Cargo.toml'
       - '**/Cargo.lock'
+  workflow_dispatch:  # Allows manual trigger from GitHub UI
 
 jobs:
   audit:

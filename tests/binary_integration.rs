@@ -3,7 +3,6 @@ use std::io::Cursor;
 
 #[test]
 fn test_binary_parser_multiple_records() {
-    // Создаем тестовые транзакции напрямую
     let records = vec![
         Transaction {
             tx_id: 1001,
@@ -27,11 +26,9 @@ fn test_binary_parser_multiple_records() {
         },
     ];
 
-    // Записываем через BinaryParser
     let mut buffer = Vec::new();
     BinaryParser::write_records(&records, &mut buffer).unwrap();
 
-    // Читаем обратно
     let mut cursor = Cursor::new(&buffer);
     let parsed = BinaryParser::parse_records(&mut cursor).unwrap();
 

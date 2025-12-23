@@ -4,17 +4,14 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 
-/// Сравнивает транзакции из двух файлов в разных форматах
 #[derive(Parser, Debug)]
 #[command(name = "ypbank_compare")]
 #[command(about = "Сравнивает транзакции из двух файлов в разных форматах", long_about = None)]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 struct Args {
-    /// Первый файл для сравнения
     #[arg(long = "file1", value_name = "FILE")]
     file1: PathBuf,
 
-    /// Формат первого файла (csv, txt, bin)
     #[arg(
         long = "format1",
         value_name = "FORMAT",
@@ -23,11 +20,9 @@ struct Args {
     )]
     format1: Format,
 
-    /// Второй файл для сравнения
     #[arg(long = "file2", value_name = "FILE")]
     file2: PathBuf,
 
-    /// Формат второго файла (csv, txt, bin)
     #[arg(
         long = "format2",
         value_name = "FORMAT",
@@ -36,26 +31,20 @@ struct Args {
     )]
     format2: Format,
 
-    /// Подробный вывод различий
     #[arg(short, long, default_value_t = false)]
     verbose: bool,
 
-    /// Игнорировать различия в описании (сравнивать только числовые поля)
     #[arg(long = "ignore-description", default_value_t = false)]
     ignore_description: bool,
 
-    /// Игнорировать различия в статусе транзакций
     #[arg(long = "ignore-status", default_value_t = false)]
     ignore_status: bool,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug, PartialEq)]
 enum Format {
-    /// CSV формат с заголовком
     Csv,
-    /// Текстовый формат с полями KEY: VALUE
     Txt,
-    /// Бинарный формат с магическим числом
     Bin,
 }
 
@@ -83,7 +72,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Проверяем существование файлов
     if !args.file1.exists() {
         eprintln!("Ошибка: файл '{}' не найден", args.file1.display());
         std::process::exit(1);
@@ -93,7 +81,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    // Читаем транзакции из обоих файлов
     let transactions1 = read_transactions(&args.file1, &args.format1)?;
     let transactions2 = read_transactions(&args.file2, &args.format2)?;
 
@@ -103,13 +90,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("  Из файла 2: {}", transactions2.len());
     }
 
-    // Сравниваем транзакции
     compare_transactions(&transactions1, &transactions2, &args)?;
 
     Ok(())
 }
 
-/// Читаем транзакции из файла в указанном формате
 fn read_transactions(
     file_path: &PathBuf,
     format: &Format,
@@ -165,13 +150,11 @@ fn read_transactions(
     }
 }
 
-/// Сравнивает два списка транзакций
 fn compare_transactions(
     txs1: &[Transaction],
     txs2: &[Transaction],
     args: &Args,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Проверяем количество транзакций
     if txs1.len() != txs2.len() {
         println!("Файлы содержат разное количество транзакций:");
         println!("  В '{}': {} транзакций", args.file1.display(), txs1.len());
@@ -187,7 +170,6 @@ fn compare_transactions(
     let mut mismatches = Vec::new();
     let mut identical_count = 0;
 
-    // Сравниваем каждую транзакцию
     for (i, (tx1, tx2)) in txs1.iter().zip(txs2.iter()).enumerate() {
         if transactions_equal(tx1, tx2, args) {
             identical_count += 1;
@@ -196,7 +178,6 @@ fn compare_transactions(
         }
     }
 
-    // Выводим результаты
     if mismatches.is_empty() {
         println!(
             "Транзакции в '{}' и '{}' идентичны.",
@@ -237,7 +218,6 @@ fn compare_transactions(
     Ok(())
 }
 
-/// Сравнивает две транзакции с учетом опций
 fn transactions_equal(tx1: &Transaction, tx2: &Transaction, args: &Args) -> bool {
     if tx1.tx_id != tx2.tx_id {
         return false;
@@ -266,7 +246,6 @@ fn transactions_equal(tx1: &Transaction, tx2: &Transaction, args: &Args) -> bool
     true
 }
 
-/// Выводит различия между двумя транзакциями
 fn print_differences(tx1: &Transaction, tx2: &Transaction, args: &Args) {
     if tx1.tx_id != tx2.tx_id {
         println!("  TX_ID: {} != {}", tx1.tx_id, tx2.tx_id);
@@ -467,8 +446,6 @@ mod tests {
         };
 
         let empty: Vec<Transaction> = Vec::new();
-        // Функция compare_transactions возвращает Result,
-        // проверяем что она не падает на пустых списках
         let result = compare_transactions(&empty, &empty, &args);
         assert!(result.is_ok());
     }

@@ -47,7 +47,6 @@ pub struct BinaryRecord {
 
 impl BinaryRecord {
     pub fn from_read<R: Read>(reader: &mut R) -> Result<Self, ParserError> {
-        // Читаем магическое число
         let mut magic = [0u8; 4];
         reader.read_exact(&mut magic)?;
 
@@ -58,14 +57,10 @@ impl BinaryRecord {
             )));
         }
 
-        // Читаем размер записи
         let record_size = reader.read_u32::<BigEndian>()?;
 
-        // Читаем тело записи
-        // TX_ID
         let tx_id = reader.read_u64::<BigEndian>()?;
 
-        // TX_TYPE
         let tx_type_byte = reader.read_u8()?;
         let tx_type = match tx_type_byte {
             0 => TransactionType::Deposit,
@@ -79,19 +74,14 @@ impl BinaryRecord {
             }
         };
 
-        // FROM_USER_ID
         let from_user_id = reader.read_u64::<BigEndian>()?;
 
-        // TO_USER_ID
         let to_user_id = reader.read_u64::<BigEndian>()?;
 
-        // AMOUNT
         let amount = reader.read_i64::<BigEndian>()?;
 
-        // TIMESTAMP
         let timestamp = reader.read_u64::<BigEndian>()?;
 
-        // STATUS
         let status_byte = reader.read_u8()?;
         let status = match status_byte {
             0 => TransactionStatus::Success,
@@ -105,10 +95,8 @@ impl BinaryRecord {
             }
         };
 
-        // DESC_LEN
         let desc_len = reader.read_u32::<BigEndian>()?;
 
-        // Проверяем соответствие размера
         let expected_size = 8 + 1 + 8 + 8 + 8 + 8 + 1 + 4 + desc_len as u64;
         if record_size as u64 != expected_size {
             return Err(ParserError::Parse(format!(
@@ -117,7 +105,6 @@ impl BinaryRecord {
             )));
         }
 
-        // DESCRIPTION
         let mut description_buf = vec![0u8; desc_len as usize];
         if desc_len > 0 {
             reader.read_exact(&mut description_buf)?;
@@ -126,7 +113,6 @@ impl BinaryRecord {
         let mut description = String::from_utf8(description_buf)
             .map_err(|e| ParserError::Parse(format!("Invalid UTF-8 in description: {}", e)))?;
 
-        // Убираем окружающие кавычки из описания, если они есть
         description = Self::normalize_description(&description);
 
         Ok(BinaryRecord {
@@ -141,11 +127,9 @@ impl BinaryRecord {
         })
     }
 
-    /// Нормализует описание, убирая лишние окружающие кавычки
     fn normalize_description(description: &str) -> String {
         let trimmed = description.trim();
 
-        // Если описание начинается и заканчивается кавычками, убираем их
         if trimmed.starts_with('"') && trimmed.ends_with('"') {
             trimmed[1..trimmed.len() - 1].to_string()
         } else {
@@ -154,17 +138,13 @@ impl BinaryRecord {
     }
 
     pub fn write_to<W: Write>(&self, writer: &mut W) -> Result<(), ParserError> {
-        // Записываем магическое число
         writer.write_all(&MAGIC)?;
 
-        // Вычисляем размер записи
         let desc_len = self.description.len() as u32;
         let record_size = 8 + 1 + 8 + 8 + 8 + 8 + 1 + 4 + desc_len;
 
-        // Записываем размер
         writer.write_u32::<BigEndian>(record_size)?;
 
-        // Записываем поля
         writer.write_u64::<BigEndian>(self.tx_id)?;
 
         let tx_type_byte = match self.tx_type {
@@ -196,7 +176,6 @@ impl BinaryRecord {
     }
 }
 
-// Реализация преобразований
 impl From<&Transaction> for BinaryRecord {
     fn from(transaction: &Transaction) -> Self {
         BinaryRecord {
@@ -309,18 +288,12 @@ mod tests {
 
     #[test]
     fn test_invalid_tx_type() {
-        // Создаем бинарные данные с неверным TX_TYPE
         let mut buffer = Vec::new();
 
-        // MAGIC
         buffer.extend_from_slice(&MAGIC);
-        // RECORD_SIZE (минимальный размер)
         buffer.extend_from_slice(&46u32.to_be_bytes());
-        // TX_ID
         buffer.extend_from_slice(&1001u64.to_be_bytes());
-        // TX_TYPE = 99 (неверный)
         buffer.push(99);
-        // Остальные поля (минимальные)
         buffer.extend_from_slice(&0u64.to_be_bytes());
         buffer.extend_from_slice(&501u64.to_be_bytes());
         buffer.extend_from_slice(&50000i64.to_be_bytes());

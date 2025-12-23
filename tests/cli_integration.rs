@@ -7,7 +7,6 @@ use tempfile::TempDir;
 fn build_and_get_binary() -> PathBuf {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 
-    // Сначала собираем бинарник
     let build_status = Command::new("cargo")
         .args(["build", "--bin", "ypbank_converter", "--quiet"])
         .status()
@@ -15,7 +14,6 @@ fn build_and_get_binary() -> PathBuf {
 
     assert!(build_status.success(), "Failed to build ypbank_converter");
 
-    // Путь к бинарнику
     let mut binary_path = manifest_dir
         .join("target")
         .join("debug")
@@ -68,7 +66,6 @@ fn test_csv_to_txt() {
     let binary_path = build_and_get_binary();
     let temp_dir = TempDir::new().unwrap();
 
-    // Создаем тестовый CSV файл
     let csv_path = temp_dir.path().join("test.csv");
     let mut csv_file = File::create(&csv_path).unwrap();
     writeln!(

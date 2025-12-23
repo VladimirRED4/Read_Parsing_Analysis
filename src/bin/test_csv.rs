@@ -5,7 +5,6 @@ use std::slice::from_ref;
 fn main() -> Result<(), parser_lib::ParserError> {
     println!("=== Тестирование CSV формата ===\n");
 
-    // 1. Парсинг примера из спецификации
     println!("1. Парсинг примера из спецификации:");
     let csv_data = r#"TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION
 1001,DEPOSIT,0,501,50000,1672531200000,SUCCESS,"Initial account funding"
@@ -27,7 +26,6 @@ fn main() -> Result<(), parser_lib::ParserError> {
         );
     }
 
-    // 2. Запись обратно в CSV
     println!("\n2. Запись обратно в CSV:");
     let mut buffer = Vec::new();
     CsvParser::write_records(&transactions, &mut buffer)?;
@@ -39,7 +37,6 @@ fn main() -> Result<(), parser_lib::ParserError> {
         csv_output.lines().take(4).collect::<Vec<_>>().join("\n")
     );
 
-    // 3. Round-trip тест
     println!("\n3. Round-trip тест:");
     let cursor = Cursor::new(csv_output);
     let parsed_again = CsvParser::parse_records(cursor)?;
@@ -50,7 +47,6 @@ fn main() -> Result<(), parser_lib::ParserError> {
         println!("   ✗ Транзакции отличаются после round-trip");
     }
 
-    // 4. Тест со специальными символами
     println!("\n4. Тест со специальными символами:");
     let special_transaction = Transaction {
         tx_id: 9999,
@@ -77,13 +73,10 @@ fn main() -> Result<(), parser_lib::ParserError> {
         println!("   ✓ Специальные символы корректно обработаны");
     } else {
         println!("   ✗ Проблема со специальными символами");
-        println!(
-            "   Ожидалось: Payment with \"quotes\" and, comma inside"
-        );
+        println!("   Ожидалось: Payment with \"quotes\" and, comma inside");
         println!("   Получено:  {}", parsed_special[0].description);
     }
 
-    // 5. Создание своих данных
     println!("\n5. Создание и парсинг собственных данных:");
     let my_transactions = vec![
         Transaction {
@@ -117,7 +110,6 @@ fn main() -> Result<(), parser_lib::ParserError> {
         println!("   {}", line);
     }
 
-    // 6. Парсинг созданного CSV обратно
     println!("\n6. Парсинг созданного CSV обратно:");
     let cursor = Cursor::new(my_csv);
     let parsed_my = CsvParser::parse_records(cursor)?;

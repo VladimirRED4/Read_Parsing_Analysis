@@ -4,7 +4,6 @@ use std::io::Cursor;
 fn main() -> Result<(), parser_lib::ParserError> {
     println!("=== Тестирование бинарного формата ===\n");
 
-    // 1. Тест одной записи
     println!("1. Тест round-trip одной записи:");
     let record = BinaryRecord {
         tx_id: 1001,
@@ -34,7 +33,6 @@ fn main() -> Result<(), parser_lib::ParserError> {
         println!("   ✗ Round-trip не удался");
     }
 
-    // 2. Тест нескольких записей
     println!("\n2. Тест нескольких записей:");
 
     let records = vec![
@@ -80,7 +78,6 @@ fn main() -> Result<(), parser_lib::ParserError> {
         multi_buffer.len()
     );
 
-    // 3. Тест через BinaryParser
     println!("\n3. Чтение через BinaryParser:");
     let mut cursor = Cursor::new(&multi_buffer);
     let transactions = BinaryParser::parse_records(&mut cursor)?;
@@ -97,7 +94,6 @@ fn main() -> Result<(), parser_lib::ParserError> {
         );
     }
 
-    // 4. Тест конвертации
     println!("\n4. Тест конвертации в Transaction:");
     let transaction: Transaction = records[0].clone().into();
     println!(
@@ -105,7 +101,6 @@ fn main() -> Result<(), parser_lib::ParserError> {
         transaction.tx_id, transaction.description
     );
 
-    // 5. Тест с пустым описанием
     println!("\n5. Тест с пустым описанием:");
     let empty_desc_record = BinaryRecord {
         tx_id: 9999,

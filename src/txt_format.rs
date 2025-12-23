@@ -2,11 +2,9 @@ use crate::{ParserError, Transaction, TransactionStatus, TransactionType};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 
-/// Парсер для текстового формата YPBankText
 pub struct TextParser;
 
 impl TextParser {
-    /// Читает все записи из текстового источника
     pub fn parse_records<R: Read>(reader: R) -> Result<Vec<Transaction>, ParserError> {
         let content = std::io::read_to_string(reader).map_err(ParserError::Io)?;
 
@@ -17,10 +15,8 @@ impl TextParser {
         for line in content.lines() {
             line_number += 1;
 
-            // Пропускаем пустые строки
             let trimmed = line.trim();
             if trimmed.is_empty() {
-                // Если встречаем пустую строку и есть текущая запись - сохраняем её
                 if !current_record.is_empty() {
                     let record = Self::parse_record(&current_record, line_number)?;
                     records.push(record);
@@ -29,12 +25,10 @@ impl TextParser {
                 continue;
             }
 
-            // Пропускаем комментарии
             if trimmed.starts_with('#') {
                 continue;
             }
 
-            // Парсим пару ключ-значение
             match Self::parse_key_value(trimmed, line_number) {
                 Ok((key, value)) => {
                     if current_record.contains_key(&key) {
@@ -49,7 +43,6 @@ impl TextParser {
             }
         }
 
-        // Обрабатываем последнюю запись (если есть)
         if !current_record.is_empty() {
             let record = Self::parse_record(&current_record, line_number)?;
             records.push(record);
@@ -58,7 +51,6 @@ impl TextParser {
         Ok(records)
     }
 
-    /// Записывает все записи в текстовый приёмник
     pub fn write_records<W: Write>(
         records: &[Transaction],
         writer: &mut W,
@@ -71,7 +63,6 @@ impl TextParser {
             writeln!(writer, "# Record {} ({:?})", i + 1, record.tx_type)
                 .map_err(ParserError::Io)?;
 
-            // Записываем поля в фиксированном порядке для читаемости
             writeln!(writer, "TX_ID: {}", record.tx_id).map_err(ParserError::Io)?;
             writeln!(writer, "TX_TYPE: {}", Self::tx_type_to_str(record.tx_type))
                 .map_err(ParserError::Io)?;
@@ -92,7 +83,6 @@ impl TextParser {
         Ok(())
     }
 
-    /// Парсит строку вида "KEY: VALUE"
     fn parse_key_value(line: &str, line_number: usize) -> Result<(String, String), ParserError> {
         let parts: Vec<&str> = line.splitn(2, ':').collect();
 
@@ -116,12 +106,10 @@ impl TextParser {
         Ok((key, value))
     }
 
-    /// Парсит запись из HashMap полей
     fn parse_record(
         fields: &HashMap<String, String>,
         line_number: usize,
     ) -> Result<Transaction, ParserError> {
-        // Проверяем наличие всех обязательных полей
         let required_fields = [
             "TX_ID",
             "TX_TYPE",
@@ -142,7 +130,6 @@ impl TextParser {
             }
         }
 
-        // Парсим отдельные поля
         let tx_id = Self::parse_u64_field(fields, "TX_ID", line_number)?;
         let tx_type = Self::parse_tx_type(fields, line_number)?;
         let from_user_id = Self::parse_u64_field(fields, "FROM_USER_ID", line_number)?;
@@ -152,7 +139,6 @@ impl TextParser {
         let status = Self::parse_status(fields, line_number)?;
         let description = Self::parse_description(fields, line_number)?;
 
-        // Валидация бизнес-правил
         Self::validate_record(tx_type, from_user_id, to_user_id, amount, line_number)?;
 
         Ok(Transaction {
@@ -167,7 +153,6 @@ impl TextParser {
         })
     }
 
-    /// Парсит поле типа u64
     fn parse_u64_field(
         fields: &HashMap<String, String>,
         field_name: &str,
@@ -185,7 +170,6 @@ impl TextParser {
         })
     }
 
-    /// Парсит поле типа i64 (всегда положительное в текстовом формате)
     fn parse_i64_field(
         fields: &HashMap<String, String>,
         field_name: &str,
@@ -195,7 +179,6 @@ impl TextParser {
             .get(field_name)
             .ok_or_else(|| ParserError::Parse(format!("Field {} not found", field_name)))?;
 
-        // Убираем возможные комментарии и пробелы
         let clean_value = value.split('#').next().unwrap_or(value).trim();
 
         let amount = clean_value.parse::<i64>().map_err(|e| {
@@ -205,7 +188,6 @@ impl TextParser {
             ))
         })?;
 
-        // Проверяем что сумма положительная
         if amount <= 0 {
             return Err(ParserError::Parse(format!(
                 "Line {}: {} must be positive, got {}",
@@ -216,7 +198,6 @@ impl TextParser {
         Ok(amount)
     }
 
-    /// Парсит тип транзакции
     fn parse_tx_type(
         fields: &HashMap<String, String>,
         line_number: usize,
@@ -236,7 +217,6 @@ impl TextParser {
         }
     }
 
-    /// Парсит статус транзакции
     fn parse_status(
         fields: &HashMap<String, String>,
         line_number: usize,
@@ -256,7 +236,6 @@ impl TextParser {
         }
     }
 
-    /// Парсит описание (убирает окружающие кавычки)
     fn parse_description(
         fields: &HashMap<String, String>,
         line_number: usize,
@@ -267,7 +246,6 @@ impl TextParser {
 
         let trimmed = value.trim();
 
-        // Проверяем что описание в кавычках
         if !(trimmed.starts_with('"') && trimmed.ends_with('"')) {
             return Err(ParserError::Parse(format!(
                 "Line {}: DESCRIPTION must be in double quotes, got '{}'",
@@ -275,14 +253,12 @@ impl TextParser {
             )));
         }
 
-        // Убираем кавычки и разэкранируем
         let content = &trimmed[1..trimmed.len() - 1];
         let unescaped = Self::unescape_description(content);
 
         Ok(unescaped)
     }
 
-    /// Валидирует запись согласно бизнес-правилам
     fn validate_record(
         tx_type: TransactionType,
         from_user_id: u64,
@@ -290,8 +266,6 @@ impl TextParser {
         _amount: i64, // Всегда положительное в текстовом формате (уже проверено в parse_i64_field)
         line_number: usize,
     ) -> Result<(), ParserError> {
-        // Сумма уже проверена на положительность в parse_i64_field,
-        // поэтому здесь просто игнорируем параметр
 
         match tx_type {
             TransactionType::Deposit => {
@@ -329,7 +303,6 @@ impl TextParser {
         Ok(())
     }
 
-    /// Конвертирует TransactionType в строку
     fn tx_type_to_str(tx_type: TransactionType) -> &'static str {
         match tx_type {
             TransactionType::Deposit => "DEPOSIT",
@@ -338,7 +311,6 @@ impl TextParser {
         }
     }
 
-    /// Конвертирует TransactionStatus в строку
     fn status_to_str(status: TransactionStatus) -> &'static str {
         match status {
             TransactionStatus::Success => "SUCCESS",
@@ -347,12 +319,10 @@ impl TextParser {
         }
     }
 
-    /// Экранирует кавычки в описании
     fn escape_description(description: &str) -> String {
         description.replace('"', "\\\"")
     }
 
-    /// Разэкранирует описание
     fn unescape_description(description: &str) -> String {
         description.replace("\\\"", "\"")
     }
@@ -400,7 +370,6 @@ DESCRIPTION: "User withdrawal""#;
 
         assert_eq!(transactions.len(), 3);
 
-        // Проверяем первую запись
         assert_eq!(transactions[0].tx_id, 1234567890123456);
         assert!(matches!(transactions[0].tx_type, TransactionType::Deposit));
         assert_eq!(transactions[0].from_user_id, 0);
@@ -410,12 +379,10 @@ DESCRIPTION: "User withdrawal""#;
         assert!(matches!(transactions[0].status, TransactionStatus::Success));
         assert_eq!(transactions[0].description, "Terminal deposit");
 
-        // Проверяем вторую запись
         assert_eq!(transactions[1].tx_id, 2312321321321321);
         assert!(matches!(transactions[1].status, TransactionStatus::Failure));
         assert_eq!(transactions[1].description, "User transfer");
 
-        // Проверяем третью запись
         assert_eq!(transactions[2].tx_id, 3213213213213213);
         assert!(matches!(
             transactions[2].tx_type,
@@ -593,18 +560,14 @@ DESCRIPTION: "Test with \"quotes\" inside""#;
 
         let text_output = String::from_utf8(buffer).unwrap();
 
-        // Проверяем наличие комментариев
         assert!(text_output.contains("# Record"));
 
-        // Проверяем наличие всех полей
         assert!(text_output.contains("TX_ID: 1001"));
         assert!(text_output.contains("TX_TYPE: DEPOSIT"));
         assert!(text_output.contains("TX_TYPE: TRANSFER"));
 
-        // Проверяем что описание в кавычках
         assert!(text_output.contains("DESCRIPTION: \""));
 
-        // Проверяем что кавычки экранированы
         assert!(text_output.contains(r#"\"quotes\""#));
     }
 
@@ -633,15 +596,12 @@ DESCRIPTION: "Test with \"quotes\" inside""#;
             },
         ];
 
-        // Записываем
         let mut buffer = Vec::new();
         TextParser::write_records(&original_transactions, &mut buffer).unwrap();
 
-        // Читаем обратно
         let cursor = Cursor::new(&buffer);
         let parsed_transactions = TextParser::parse_records(cursor).unwrap();
 
-        // Сравниваем
         assert_eq!(original_transactions.len(), parsed_transactions.len());
 
         for i in 0..original_transactions.len() {
@@ -676,7 +636,6 @@ DESCRIPTION: "Test""#;
 
     #[test]
     fn test_business_validation_deposit() {
-        // DEPOSIT с ненулевым from_user_id
         let text = r#"TX_ID: 1001
 TX_TYPE: DEPOSIT
 FROM_USER_ID: 123  # Должно быть 0
@@ -694,7 +653,6 @@ DESCRIPTION: "Invalid deposit""#;
 
     #[test]
     fn test_business_validation_withdrawal() {
-        // WITHDRAWAL с ненулевым to_user_id
         let text = r#"TX_ID: 1001
 TX_TYPE: WITHDRAWAL
 FROM_USER_ID: 501
@@ -712,7 +670,6 @@ DESCRIPTION: "Invalid withdrawal""#;
 
     #[test]
     fn test_negative_amount() {
-        // Отрицательная сумма недопустима в текстовом формате
         let text = r#"TX_ID: 1001
 TX_TYPE: DEPOSIT
 FROM_USER_ID: 0
@@ -733,7 +690,6 @@ DESCRIPTION: "Test""#;
 
     #[test]
     fn test_zero_amount() {
-        // Нулевая сумма недопустима
         let text = r#"TX_ID: 1001
 TX_TYPE: DEPOSIT
 FROM_USER_ID: 0

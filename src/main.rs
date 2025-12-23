@@ -4,17 +4,14 @@ use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read};
 use std::path::{Path, PathBuf};
 
-/// Конвертер файлов между форматами YPBank (CSV, Text, Binary)
 #[derive(Parser, Debug)]
 #[command(name = "ypbank_converter")]
 #[command(version = "1.0")]
 #[command(about = "Конвертирует файлы между форматами YPBank (CSV, Text, Binary)", long_about = None)]
 struct Args {
-    /// Входной файл для конвертации
     #[arg(short, long, value_name = "FILE")]
     input: PathBuf,
 
-    /// Формат входного файла (csv, txt, bin)
     #[arg(
         long = "input-format",
         value_name = "FORMAT",
@@ -23,7 +20,6 @@ struct Args {
     )]
     input_format: Format,
 
-    /// Формат выходного файла (csv, txt, bin)
     #[arg(
         long = "output-format",
         value_name = "FORMAT",
@@ -32,37 +28,29 @@ struct Args {
     )]
     output_format: Format,
 
-    /// Выходной файл (если не указан, выводится в stdout)
     #[arg(short, long, value_name = "FILE")]
     output: Option<PathBuf>,
 
-    /// Показывать подробную информацию о транзакциях
     #[arg(short, long, default_value_t = false)]
     verbose: bool,
 
-    /// Пропускать проверку бизнес-правил (только для чтения)
     #[arg(long, default_value_t = false)]
     skip_validation: bool,
 }
 
 #[derive(clap::ValueEnum, Clone, Debug, PartialEq)]
 enum Format {
-    /// CSV формат с заголовком
     Csv,
-    /// Текстовый формат с полями KEY: VALUE
     Txt,
-    /// Бинарный формат с магическим числом
     Bin,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    // Проверяем существование входного файла
     if !args.input.exists() {
         eprintln!("Ошибка: входной файл '{}' не найден", args.input.display());
 
-        // Проверяем есть ли примеры в папке examples
         let examples_dir = Path::new("examples");
         if examples_dir.exists() {
             eprintln!("Доступные примеры файлов в папке 'examples/':");
@@ -101,7 +89,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Чтение транзакций из входного файла
     let transactions = read_transactions(&args.input, &args.input_format, args.skip_validation)?;
 
     if args.verbose {
@@ -125,7 +112,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Запись транзакций в выходной формат
     write_transactions(
         &transactions,
         &args.output_format,
@@ -140,13 +126,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Читает транзакции из файла в указанном формате
 fn read_transactions(
     input_path: &Path,
     format: &Format,
     skip_validation: bool,
 ) -> Result<Vec<Transaction>, Box<dyn std::error::Error>> {
-    // Открываем файл
     let file = File::open(input_path)
         .map_err(|e| format!("Не удалось открыть файл '{}': {}", input_path.display(), e))?;
 
@@ -156,14 +140,12 @@ fn read_transactions(
 
     match format {
         Format::Csv => {
-            // Для CSV используем файл напрямую (CsvParser принимает Read)
             let file = File::open(input_path)
                 .map_err(|e| format!("Не удалось открыть CSV файл: {}", e))?;
 
             CsvParser::parse_records(file).map_err(|e| format!("Ошибка парсинга CSV: {}", e).into())
         }
         Format::Txt => {
-            // Для текстового формата также используем файл напрямую
             let file = File::open(input_path)
                 .map_err(|e| format!("Не удалось открыть текстовый файл: {}", e))?;
 
@@ -171,10 +153,8 @@ fn read_transactions(
                 .map_err(|e| format!("Ошибка парсинга текстового файла: {}", e).into())
         }
         Format::Bin => {
-            // Для бинарного формата используем BufReader
             let mut reader = BufReader::new(file);
 
-            // Читаем первые 4 байта для проверки магического числа
             let mut magic = [0u8; 4];
             if reader.read_exact(&mut magic).is_ok() {
                 let expected_magic = [0x59, 0x50, 0x42, 0x4E]; // "YPBN"
@@ -186,7 +166,6 @@ fn read_transactions(
                     eprintln!("  Ожидалось: {:?}", expected_magic);
                     eprintln!("  Продолжаем парсинг, но возможны ошибки...");
                 }
-                // Возвращаемся в начало файла
                 let file = File::open(input_path)?;
                 let mut reader = BufReader::new(file);
                 BinaryParser::parse_records(&mut reader)
@@ -198,7 +177,6 @@ fn read_transactions(
     }
 }
 
-/// Записывает транзакции в указанный формат
 fn write_transactions(
     transactions: &[Transaction],
     format: &Format,
@@ -210,26 +188,22 @@ fn write_transactions(
         eprintln!("Используйте --output <файл> для сохранения в файл");
     }
 
-    // Всегда требуем --output для бинарного формата
     if output_path.is_none() && matches!(format, Format::Bin) {
         return Err("Ошибка: Для бинарного формата необходимо указать выходной файл с помощью --output <файл>".into());
     }
 
     match output_path {
         Some(path) => {
-            // Проверяем возможность записи
             if path.exists() && verbose {
                 eprintln!("Файл '{}' будет перезаписан", path.display());
             }
 
-            // Запись в файл
             let file = File::create(path)
                 .map_err(|e| format!("Не удалось создать файл '{}': {}", path.display(), e))?;
             let mut writer = BufWriter::new(file);
             write_to_writer(transactions, format, &mut writer, verbose)
         }
         None => {
-            // Запись в stdout (только для текстовых форматов)
             let stdout = io::stdout();
             let mut writer = BufWriter::new(stdout.lock());
             write_to_writer(transactions, format, &mut writer, verbose)
@@ -237,7 +211,6 @@ fn write_transactions(
     }
 }
 
-/// Записывает транзакции в writer в указанном формате
 fn write_to_writer<W: std::io::Write>(
     transactions: &[Transaction],
     format: &Format,

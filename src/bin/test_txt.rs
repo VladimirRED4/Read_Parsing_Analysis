@@ -5,7 +5,6 @@ use std::slice::from_ref;
 fn main() -> Result<(), parser_lib::ParserError> {
     println!("=== Тестирование текстового формата ===\n");
 
-    // 1. Парсинг примера из спецификации
     println!("1. Парсинг примера из спецификации:");
     let text_data = r#"# Record 1 (DEPOSIT)
 TX_TYPE: DEPOSIT
@@ -142,7 +141,6 @@ DESCRIPTION: "Record number 12""#;
         );
     }
 
-    // 2. Запись обратно в текстовый формат
     println!("\n2. Запись обратно в текстовый формат:");
     let mut buffer = Vec::new();
     TextParser::write_records(&transactions, &mut buffer)?;
@@ -154,7 +152,6 @@ DESCRIPTION: "Record number 12""#;
         println!("   {}", line);
     }
 
-    // 3. Round-trip тест
     println!("\n3. Round-trip тест:");
     let cursor = Cursor::new(text_output);
     let parsed_again = TextParser::parse_records(cursor)?;
@@ -165,7 +162,6 @@ DESCRIPTION: "Record number 12""#;
         println!("   ✗ Транзакции отличаются после round-trip");
     }
 
-    // 4. Тест с экранированными кавычками
     println!("\n4. Тест с экранированными кавычками:");
     let special_transaction = Transaction {
         tx_id: 9999,
@@ -198,7 +194,6 @@ DESCRIPTION: "Record number 12""#;
         println!("   Получено:  {}", parsed_special[0].description);
     }
 
-    // 5. Тест с разным порядком полей
     println!("\n5. Тест с разным порядком полей:");
     let random_order_text = r#"DESCRIPTION: "Random order test"
 AMOUNT: 75000
@@ -217,7 +212,6 @@ TIMESTAMP: 1672642800000"#;
         random_transactions[0].tx_id, random_transactions[0].amount
     );
 
-    // 6. Тест с комментариями и пробелами
     println!("\n6. Тест с комментариями и пробелами:");
     let messy_text = r#"
 # Много комментариев

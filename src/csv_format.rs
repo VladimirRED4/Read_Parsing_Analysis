@@ -1,11 +1,9 @@
 use crate::{ParserError, Transaction, TransactionStatus, TransactionType};
 use std::io::{Read, Write};
 
-/// Парсер для CSV формата
 pub struct CsvParser;
 
 impl CsvParser {
-    /// Читает все записи из CSV источника
     pub fn parse_records<R: Read>(reader: R) -> Result<Vec<Transaction>, ParserError> {
         let content = std::io::read_to_string(reader).map_err(ParserError::Io)?;
 
@@ -15,7 +13,6 @@ impl CsvParser {
             return Ok(Vec::new());
         }
 
-        // Проверяем заголовок
         let headers = Self::parse_line(lines[0], 0)?;
         Self::validate_headers(&headers)?;
 
@@ -35,12 +32,10 @@ impl CsvParser {
         Ok(records)
     }
 
-    /// Записывает все записи в CSV приёмник
     pub fn write_records<W: Write>(
         records: &[Transaction],
         writer: &mut W,
     ) -> Result<(), ParserError> {
-        // Записываем заголовок
         writeln!(
             writer,
             "TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION"
@@ -60,7 +55,6 @@ impl CsvParser {
                 TransactionStatus::Pending => "PENDING",
             };
 
-            // Экранируем описание для CSV - ВСЕГДА в кавычках
             let description = Self::escape_description(&record.description);
 
             writeln!(
@@ -81,7 +75,6 @@ impl CsvParser {
         Ok(())
     }
 
-    /// Парсит строку CSV с учетом кавычек и экранирования
     fn parse_line(line: &str, line_num: usize) -> Result<Vec<String>, ParserError> {
         let mut fields = Vec::new();
         let mut current_field = String::new();
@@ -92,21 +85,17 @@ impl CsvParser {
             match ch {
                 '"' => {
                     if in_quotes {
-                        // Проверяем следующий символ - если это тоже кавычка, то это экранированная кавычка
                         if let Some(&next_ch) = chars.peek() {
                             if next_ch == '"' {
                                 chars.next(); // Пропускаем вторую кавычку
                                 current_field.push('"');
                             } else {
-                                // Закрывающая кавычка
                                 in_quotes = false;
                             }
                         } else {
-                            // Закрывающая кавычка в конце строки
                             in_quotes = false;
                         }
                     } else {
-                        // Открывающая кавычка
                         in_quotes = true;
                     }
                 }
@@ -124,10 +113,8 @@ impl CsvParser {
             }
         }
 
-        // Добавляем последнее поле
         fields.push(current_field);
 
-        // Проверяем, что все кавычки закрыты
         if in_quotes {
             return Err(ParserError::Parse(format!(
                 "Line {}: Unclosed double quote",
@@ -138,7 +125,6 @@ impl CsvParser {
         Ok(fields)
     }
 
-    /// Проверяет корректность заголовка
     fn validate_headers(headers: &[String]) -> Result<(), ParserError> {
         let expected = [
             "TX_ID",
@@ -173,7 +159,6 @@ impl CsvParser {
         Ok(())
     }
 
-    /// Парсит запись из полей
     fn parse_record(fields: &[String], line_num: usize) -> Result<Transaction, ParserError> {
         if fields.len() != 8 {
             return Err(ParserError::Parse(format!(
@@ -183,7 +168,6 @@ impl CsvParser {
             )));
         }
 
-        // Парсим TX_ID
         let tx_id = fields[0].parse::<u64>().map_err(|e| {
             ParserError::Parse(format!(
                 "Line {}: Invalid TX_ID '{}': {}",
@@ -191,7 +175,6 @@ impl CsvParser {
             ))
         })?;
 
-        // Парсим TX_TYPE
         let tx_type = match fields[1].as_str() {
             "DEPOSIT" => TransactionType::Deposit,
             "TRANSFER" => TransactionType::Transfer,
@@ -204,7 +187,6 @@ impl CsvParser {
             }
         };
 
-        // Парсим FROM_USER_ID
         let from_user_id = fields[2].parse::<u64>().map_err(|e| {
             ParserError::Parse(format!(
                 "Line {}: Invalid FROM_USER_ID '{}': {}",
@@ -212,7 +194,6 @@ impl CsvParser {
             ))
         })?;
 
-        // Парсим TO_USER_ID
         let to_user_id = fields[3].parse::<u64>().map_err(|e| {
             ParserError::Parse(format!(
                 "Line {}: Invalid TO_USER_ID '{}': {}",
@@ -220,7 +201,6 @@ impl CsvParser {
             ))
         })?;
 
-        // Парсим AMOUNT (всегда положительное в CSV)
         let amount = fields[4].parse::<i64>().map_err(|e| {
             ParserError::Parse(format!(
                 "Line {}: Invalid AMOUNT '{}': {}",
@@ -228,7 +208,6 @@ impl CsvParser {
             ))
         })?;
 
-        // Парсим TIMESTAMP
         let timestamp = fields[5].parse::<u64>().map_err(|e| {
             ParserError::Parse(format!(
                 "Line {}: Invalid TIMESTAMP '{}': {}",
@@ -236,7 +215,6 @@ impl CsvParser {
             ))
         })?;
 
-        // Парсим STATUS
         let status = match fields[6].as_str() {
             "SUCCESS" => TransactionStatus::Success,
             "FAILURE" => TransactionStatus::Failure,
@@ -249,10 +227,8 @@ impl CsvParser {
             }
         };
 
-        // DESCRIPTION - разэкранируем
         let description = Self::unescape_description(&fields[7]);
 
-        // Валидация бизнес-логики
         Self::validate_record(tx_type, from_user_id, to_user_id, amount, line_num)?;
 
         Ok(Transaction {
@@ -267,7 +243,6 @@ impl CsvParser {
         })
     }
 
-    /// Валидирует запись согласно бизнес-правилам
     fn validate_record(
         tx_type: TransactionType,
         from_user_id: u64,
@@ -275,7 +250,6 @@ impl CsvParser {
         amount: i64, // В CSV это всегда положительное число
         line_num: usize,
     ) -> Result<(), ParserError> {
-        // Проверяем что сумма положительная (в CSV все суммы положительные)
         if amount <= 0 {
             return Err(ParserError::Parse(format!(
                 "Line {}: AMOUNT must be positive in CSV format, got {}",
@@ -319,22 +293,16 @@ impl CsvParser {
         Ok(())
     }
 
-    /// Экранирует внутренние кавычки путем их удвоения
     fn escape_description(description: &str) -> String {
-        // Экранируем кавычки внутри строки: заменяем " на ""
         let escaped = description.replace('"', "\"\"");
-        // Всегда заключаем в кавычки
         format!("\"{}\"", escaped)
     }
 
-    /// Разэкранирует описание из CSV
     fn unescape_description(description: &str) -> String {
         let trimmed = description.trim();
 
-        // Убираем окружающие кавычки если они есть
         if trimmed.starts_with('"') && trimmed.ends_with('"') {
             let content = &trimmed[1..trimmed.len() - 1];
-            // Разэкранируем двойные кавычки
             content.replace("\"\"", "\"")
         } else {
             trimmed.to_string()
@@ -362,7 +330,6 @@ mod tests {
 
         assert_eq!(transactions.len(), 3);
 
-        // Проверяем первую запись
         assert_eq!(transactions[0].tx_id, 1001);
         assert!(matches!(transactions[0].tx_type, TransactionType::Deposit));
         assert_eq!(transactions[0].from_user_id, 0);
@@ -372,11 +339,9 @@ mod tests {
         assert!(matches!(transactions[0].status, TransactionStatus::Success));
         assert_eq!(transactions[0].description, "Initial account funding");
 
-        // Проверяем вторую запись
         assert_eq!(transactions[1].amount, 15000);
         assert!(matches!(transactions[1].status, TransactionStatus::Failure));
 
-        // Проверяем третью запись
         assert_eq!(transactions[2].amount, 1000);
         assert!(matches!(
             transactions[2].tx_type,
@@ -460,19 +425,15 @@ mod tests {
 
         let csv_output = String::from_utf8(buffer).unwrap();
 
-        // Проверяем заголовок
         assert!(csv_output.starts_with(
             "TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION\n"
         ));
 
-        // Проверяем наличие данных
         assert!(csv_output.contains("1001,DEPOSIT"));
         assert!(csv_output.contains("1002,WITHDRAWAL"));
         assert!(csv_output.contains("15000"));
-        // Описание с запятой и кавычками должно быть в кавычках с экранированием
         assert!(csv_output.contains("\"Withdrawal with, comma and \"\"quotes\"\"\""));
 
-        // Парсим обратно и проверяем round-trip
         let cursor = Cursor::new(csv_output);
         let parsed = CsvParser::parse_records(cursor).unwrap();
 
@@ -485,7 +446,6 @@ mod tests {
 
     #[test]
     fn test_roundtrip() {
-        // Создаем тестовые транзакции
         let original_transactions = vec![
             Transaction {
                 tx_id: 1001,
@@ -509,15 +469,12 @@ mod tests {
             },
         ];
 
-        // Записываем
         let mut buffer = Vec::new();
         CsvParser::write_records(&original_transactions, &mut buffer).unwrap();
 
-        // Читаем обратно
         let cursor = Cursor::new(&buffer);
         let parsed_transactions = CsvParser::parse_records(cursor).unwrap();
 
-        // Сравниваем
         assert_eq!(original_transactions, parsed_transactions);
     }
 
@@ -567,13 +524,11 @@ mod tests {
         let transactions = result.unwrap();
         assert_eq!(transactions.len(), 2);
 
-        // Проверяем депозит
         assert_eq!(transactions[0].tx_id, 1000000000000000);
         assert_eq!(transactions[0].from_user_id, 0);
         assert_eq!(transactions[0].to_user_id, 9223372036854775807);
         assert_eq!(transactions[0].amount, 100);
 
-        // Проверяем вывод
         assert_eq!(transactions[1].tx_id, 1000000000000002);
         assert_eq!(transactions[1].tx_type, TransactionType::Withdrawal);
         assert_eq!(transactions[1].amount, 300);
@@ -581,7 +536,6 @@ mod tests {
 
     #[test]
     fn test_escape_description() {
-        // Все описания должны быть в кавычках
         assert_eq!(CsvParser::escape_description("Simple"), "\"Simple\"");
         assert_eq!(
             CsvParser::escape_description("With,comma"),
@@ -621,14 +575,12 @@ mod tests {
 
     #[test]
     fn test_parse_negative_amount_in_csv() {
-        // В CSV суммы всегда положительные
         let csv = r#"TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION
 1001,WITHDRAWAL,501,0,-1000,1672538400000,PENDING,"Test""#;
 
         let cursor = Cursor::new(csv);
         let result = CsvParser::parse_records(cursor);
 
-        // Должна быть ошибка, т.к. в CSV суммы должны быть положительными
         assert!(matches!(result, Err(ParserError::Parse(_))));
     }
 
@@ -650,14 +602,12 @@ mod tests {
 
         let csv_output = String::from_utf8(buffer).unwrap();
 
-        // Проверяем что описание ВСЕГДА в кавычках, даже если нет специальных символов
         let lines: Vec<&str> = csv_output.lines().collect();
         assert!(lines.len() >= 2);
         let data_line = lines[1];
         let fields: Vec<&str> = data_line.split(',').collect();
         assert_eq!(fields.len(), 8);
 
-        // Поле DESCRIPTION (последнее поле) должно быть в кавычках
         let description_field = fields[7];
         assert!(description_field.starts_with('"'));
         assert!(description_field.ends_with('"'));
@@ -683,10 +633,8 @@ mod tests {
         let csv_output = String::from_utf8(buffer).unwrap();
         println!("CSV output: {}", csv_output);
 
-        // Проверяем что описание в кавычках
         assert!(csv_output.contains("\"Record number 1\""));
 
-        // Парсим обратно
         let cursor = std::io::Cursor::new(csv_output);
         let parsed = CsvParser::parse_records(cursor).unwrap();
 
