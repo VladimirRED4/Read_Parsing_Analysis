@@ -1,4 +1,11 @@
-# YPBank Transaction Parser & Converter
+# Read Parsing Analysis
+
+![Tests](https://github.com/VladimirRED4/Read_Parsing_Analysis/actions/workflows/rust.yml/badge.svg)
+![Security Audit](https://github.com/VladimirRED4/Read_Parsing_Analysis/actions/workflows/audit.yml/badge.svg)
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)
+
+## YPBank Transaction Parser & Converter
 
 Библиотека и утилиты для работы с транзакционными данными в различных форматах.
 
