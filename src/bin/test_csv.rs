@@ -1,4 +1,6 @@
-use parser_lib::{CsvParser, Transaction, TransactionStatus, TransactionType};
+use parser_lib::{
+    CsvParser, CsvTransactions, ParseFromRead, Transaction, TransactionStatus, TransactionType,
+};
 use std::io::Cursor;
 use std::slice::from_ref;
 
@@ -94,7 +96,7 @@ fn main() -> Result<(), parser_lib::ParserError> {
             tx_type: TransactionType::Withdrawal,
             from_user_id: 300,
             to_user_id: 0,
-            amount: 25000, // Положительная сумма для WITHDRAWAL
+            amount: 25000,
             timestamp: 1672646400000,
             status: TransactionStatus::Pending,
             description: "Rent payment".to_string(),
@@ -122,6 +124,24 @@ fn main() -> Result<(), parser_lib::ParserError> {
             tx.tx_id,
             tx.tx_type,
             tx.amount
+        );
+    }
+
+    println!("\n7. Тест трейта ParseFromRead для CsvTransactions:");
+    let csv_test_data = r#"TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION
+7777,DEPOSIT,0,888,9999,1672531200000,SUCCESS,"Test ParseFromRead""#;
+
+    let mut cursor = Cursor::new(csv_test_data);
+    let csv_transactions: CsvTransactions = ParseFromRead::parse(&mut cursor)?;
+
+    println!(
+        "   Прочитано через трейт: {} транзакций",
+        csv_transactions.0.len()
+    );
+    if !csv_transactions.0.is_empty() {
+        println!(
+            "   TX_ID: {}, Описание: '{}'",
+            csv_transactions.0[0].tx_id, csv_transactions.0[0].description
         );
     }
 

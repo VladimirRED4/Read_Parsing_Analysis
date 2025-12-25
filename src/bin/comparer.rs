@@ -1,5 +1,7 @@
 use clap::Parser;
-use parser_lib::{BinaryParser, CsvParser, TextParser, Transaction};
+use parser_lib::{
+    BinaryTransactions, CsvTransactions, ParseFromRead, TextTransactions, Transaction,
+};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -90,81 +92,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("  Из файла 2: {}", transactions2.len());
     }
 
-    compare_transactions(&transactions1, &transactions2, &args)?;
-
-    Ok(())
-}
-
-fn read_transactions(
-    file_path: &PathBuf,
-    format: &Format,
-) -> Result<Vec<Transaction>, Box<dyn std::error::Error>> {
-    match format {
-        Format::Csv => {
-            let file = File::open(file_path).map_err(|e| {
-                format!(
-                    "Не удалось открыть CSV файл '{}': {}",
-                    file_path.display(),
-                    e
-                )
-            })?;
-            CsvParser::parse_records(file).map_err(|e| {
-                format!("Ошибка парсинга CSV файла '{}': {}", file_path.display(), e).into()
-            })
+    // Запускаем сравнение и получаем статус
+    match compare_transactions(&transactions1, &transactions2, &args) {
+        Ok(true) => {
+            // Файлы идентичны
+            println!(
+                "Файлы '{}' и '{}' идентичны.",
+                args.file1.display(),
+                args.file2.display()
+            );
+            Ok(())
         }
-        Format::Txt => {
-            let file = File::open(file_path).map_err(|e| {
-                format!(
-                    "Не удалось открыть текстовый файл '{}': {}",
-                    file_path.display(),
-                    e
-                )
-            })?;
-            TextParser::parse_records(file).map_err(|e| {
-                format!(
-                    "Ошибка парсинга текстового файла '{}': {}",
-                    file_path.display(),
-                    e
-                )
-                .into()
-            })
+        Ok(false) => {
+            // Найдены различия
+            std::process::exit(2);
         }
-        Format::Bin => {
-            let file = File::open(file_path).map_err(|e| {
-                format!(
-                    "Не удалось открыть бинарный файл '{}': {}",
-                    file_path.display(),
-                    e
-                )
-            })?;
-            let mut reader = BufReader::new(file);
-            BinaryParser::parse_records(&mut reader).map_err(|e| {
-                format!(
-                    "Ошибка парсинга бинарного файла '{}': {}",
-                    file_path.display(),
-                    e
-                )
-                .into()
-            })
+        Err(e) => {
+            // Ошибка в логике сравнения
+            eprintln!("Ошибка при сравнении: {}", e);
+            std::process::exit(3);
         }
     }
 }
 
+// Изменяем возвращаемый тип функции сравнения
 fn compare_transactions(
     txs1: &[Transaction],
     txs2: &[Transaction],
     args: &Args,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<bool, Box<dyn std::error::Error>> {
     if txs1.len() != txs2.len() {
         println!("Файлы содержат разное количество транзакций:");
         println!("  В '{}': {} транзакций", args.file1.display(), txs1.len());
         println!("  В '{}': {} транзакций", args.file2.display(), txs2.len());
-        return Ok(());
+        return Ok(false); // Разная длина = несоответствие
     }
 
     if txs1.is_empty() {
         println!("Оба файла пусты.");
-        return Ok(());
+        return Ok(true); // Оба пустые = соответствие
     }
 
     let mut mismatches = Vec::new();
@@ -179,14 +145,10 @@ fn compare_transactions(
     }
 
     if mismatches.is_empty() {
-        println!(
-            "Транзакции в '{}' и '{}' идентичны.",
-            args.file1.display(),
-            args.file2.display()
-        );
         if args.verbose {
             println!("Все {} транзакций совпадают.", identical_count);
         }
+        Ok(true) // Все транзакции идентичны
     } else {
         println!(
             "Найдено {} несоответствий из {} транзакций:",
@@ -213,9 +175,32 @@ fn compare_transactions(
             println!("  Несовпадающих транзакций: {}", mismatches.len());
             println!("  Всего транзакций: {}", txs1.len());
         }
-    }
 
-    Ok(())
+        Ok(false) // Есть несоответствия
+    }
+}
+
+fn read_transactions(
+    file_path: &PathBuf,
+    format: &Format,
+) -> Result<Vec<Transaction>, Box<dyn std::error::Error>> {
+    let file = File::open(file_path)?;
+    let mut reader = BufReader::new(file);
+
+    match format {
+        Format::Csv => {
+            let csv_transactions: CsvTransactions = ParseFromRead::parse(&mut reader)?;
+            Ok(csv_transactions.0)
+        }
+        Format::Txt => {
+            let text_transactions: TextTransactions = ParseFromRead::parse(&mut reader)?;
+            Ok(text_transactions.0)
+        }
+        Format::Bin => {
+            let bin_transactions: BinaryTransactions = ParseFromRead::parse(&mut reader)?;
+            Ok(bin_transactions.0)
+        }
+    }
 }
 
 fn transactions_equal(tx1: &Transaction, tx2: &Transaction, args: &Args) -> bool {
@@ -278,7 +263,6 @@ fn print_differences(tx1: &Transaction, tx2: &Transaction, args: &Args) {
         );
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -387,6 +371,7 @@ mod tests {
             "1001,DEPOSIT,0,501,50000,1672531200000,SUCCESS,\"Test\""
         )?;
 
+        // Используем исправленную функцию read_transactions
         let transactions = read_transactions(&file.path().to_path_buf(), &Format::Csv)?;
         assert_eq!(transactions.len(), 1);
         assert_eq!(transactions[0].tx_id, 1001);
@@ -406,6 +391,7 @@ mod tests {
         writeln!(file, "STATUS: SUCCESS")?;
         writeln!(file, "DESCRIPTION: \"Test\"")?;
 
+        // Используем исправленную функцию read_transactions
         let transactions = read_transactions(&file.path().to_path_buf(), &Format::Txt)?;
         assert_eq!(transactions.len(), 1);
         assert_eq!(transactions[0].tx_id, 1001);
@@ -448,6 +434,8 @@ mod tests {
         let empty: Vec<Transaction> = Vec::new();
         let result = compare_transactions(&empty, &empty, &args);
         assert!(result.is_ok());
+        // Пустые списки должны считаться идентичными
+        assert_eq!(result.unwrap(), true);
     }
 
     #[test]
@@ -470,5 +458,56 @@ mod tests {
 
         let result = compare_transactions(&list1, &list2, &args);
         assert!(result.is_ok());
+        // Разные длины должны возвращать false
+        assert_eq!(result.unwrap(), false);
+    }
+
+    #[test]
+    fn test_compare_identical_lists() {
+        let args = Args {
+            file1: PathBuf::from("test1.csv"),
+            format1: Format::Csv,
+            file2: PathBuf::from("test2.csv"),
+            format2: Format::Csv,
+            verbose: false,
+            ignore_description: false,
+            ignore_status: false,
+        };
+
+        let tx1 = create_test_transaction(1001);
+        let tx2 = create_test_transaction(1002);
+
+        let list1 = vec![tx1.clone(), tx2.clone()];
+        let list2 = vec![tx1, tx2];
+
+        let result = compare_transactions(&list1, &list2, &args);
+        assert!(result.is_ok());
+        // Идентичные списки должны возвращать true
+        assert_eq!(result.unwrap(), true);
+    }
+
+    #[test]
+    fn test_compare_lists_with_differences() {
+        let args = Args {
+            file1: PathBuf::from("test1.csv"),
+            format1: Format::Csv,
+            file2: PathBuf::from("test2.csv"),
+            format2: Format::Csv,
+            verbose: false,
+            ignore_description: false,
+            ignore_status: false,
+        };
+
+        let tx1 = create_test_transaction(1001);
+        let mut tx2 = create_test_transaction(1002);
+        tx2.amount = 60000; // Измененная сумма
+
+        let list1 = vec![tx1.clone(), create_test_transaction(1002)];
+        let list2 = vec![tx1, tx2];
+
+        let result = compare_transactions(&list1, &list2, &args);
+        assert!(result.is_ok());
+        // Списки с различиями должны возвращать false
+        assert_eq!(result.unwrap(), false);
     }
 }

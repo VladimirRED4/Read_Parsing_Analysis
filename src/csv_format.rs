@@ -1,9 +1,27 @@
-use crate::{ParserError, Transaction, TransactionStatus, TransactionType};
+use crate::{
+    CsvTransactions, ParseFromRead, ParserError, Transaction, TransactionStatus, TransactionType,
+    WriteTo,
+};
 use std::io::{Read, Write};
 
+/// Парсер CSV формата транзакций
+///
+/// CSV формат имеет следующую структуру:
+/// - Заголовок с именами полей (первая строка)
+/// - Данные транзакций (последующие строки)
+/// - Поддерживает экранирование кавычек и запятых в описаниях
 pub struct CsvParser;
 
 impl CsvParser {
+    /// Парсит CSV записи транзакций из читаемого потока
+    ///
+    /// # Аргументы
+    /// * `reader` - Читаемый поток (например, файл или буфер)
+    ///
+    /// # Возвращает
+    /// * `Ok(Vec<Transaction>)` - Вектор распарсенных транзакций
+    /// * `Err(ParserError)` - Ошибка парсинга или ввода-вывода
+    ///
     pub fn parse_records<R: Read>(reader: R) -> Result<Vec<Transaction>, ParserError> {
         let content = std::io::read_to_string(reader).map_err(ParserError::Io)?;
 
@@ -21,7 +39,7 @@ impl CsvParser {
         for (line_num, line) in lines.iter().enumerate().skip(1) {
             let line_num = line_num + 1;
             if line.trim().is_empty() {
-                continue; // Пропускаем пустые строки
+                continue;
             }
 
             let fields = Self::parse_line(line, line_num)?;
@@ -32,6 +50,40 @@ impl CsvParser {
         Ok(records)
     }
 
+    /// Записывает транзакции в CSV формат в записываемый поток
+    ///
+    /// # Аргументы
+    /// * `records` - Список транзакций для записи
+    /// * `writer` - Записываемый поток (например, файл или буфер)
+    ///
+    /// # Возвращает
+    /// * `Ok(())` - Успешная запись
+    /// * `Err(ParserError)` - Ошибка записи
+    ///
+    /// # Пример
+    /// ```
+    /// use parser_lib::{CsvParser, Transaction, TransactionType, TransactionStatus};
+    /// use std::fs::File;
+    /// use std::io::BufWriter;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let transactions = vec![Transaction {
+    ///     tx_id: 1001,
+    ///     tx_type: TransactionType::Deposit,
+    ///     from_user_id: 0,
+    ///     to_user_id: 501,
+    ///     amount: 50000,
+    ///     timestamp: 1672531200000,
+    ///     status: TransactionStatus::Success,
+    ///     description: "Test".to_string(),
+    /// }];
+    ///
+    /// let file = File::create("output.csv")?;
+    /// let mut writer = BufWriter::new(file);
+    /// CsvParser::write_records(&transactions, &mut writer).unwrap();
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn write_records<W: Write>(
         records: &[Transaction],
         writer: &mut W,
@@ -87,7 +139,7 @@ impl CsvParser {
                     if in_quotes {
                         if let Some(&next_ch) = chars.peek() {
                             if next_ch == '"' {
-                                chars.next(); // Пропускаем вторую кавычку
+                                chars.next();
                                 current_field.push('"');
                             } else {
                                 in_quotes = false;
@@ -247,7 +299,7 @@ impl CsvParser {
         tx_type: TransactionType,
         from_user_id: u64,
         to_user_id: u64,
-        amount: i64, // В CSV это всегда положительное число
+        amount: i64,
         line_num: usize,
     ) -> Result<(), ParserError> {
         if amount <= 0 {
@@ -307,6 +359,31 @@ impl CsvParser {
         } else {
             trimmed.to_string()
         }
+    }
+}
+
+// Реализуем трейт ParseFromRead для CsvTransactions
+impl<R: Read> ParseFromRead<R> for CsvTransactions {
+    fn parse(reader: &mut R) -> Result<Self, ParserError> {
+        let transactions = CsvParser::parse_records(reader)?;
+        Ok(CsvTransactions(transactions))
+    }
+}
+
+// Реализуем трейт WriteTo для CsvTransactions
+impl<W: Write> WriteTo<W> for CsvTransactions {
+    fn write(&self, writer: &mut W) -> Result<(), ParserError> {
+        CsvParser::write_records(&self.0, writer)
+    }
+}
+
+// Также реализуем WriteTo для среза CsvTransactions
+impl<W: Write> WriteTo<W> for [CsvTransactions] {
+    fn write(&self, writer: &mut W) -> Result<(), ParserError> {
+        for transactions in self {
+            transactions.write(writer)?;
+        }
+        Ok(())
     }
 }
 

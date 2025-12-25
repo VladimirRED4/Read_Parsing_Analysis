@@ -1,4 +1,6 @@
-use parser_lib::{TextParser, Transaction, TransactionStatus, TransactionType};
+use parser_lib::{
+    ParseFromRead, TextParser, TextTransactions, Transaction, TransactionStatus, TransactionType,
+};
 use std::io::Cursor;
 use std::slice::from_ref;
 
@@ -246,6 +248,30 @@ DESCRIPTION: "Another one"
         "   Распарсено {} транзакций из грязного текста",
         messy_transactions.len()
     );
+
+    println!("\n7. Тест трейта ParseFromRead для TextTransactions:");
+    let text_test_data = r#"TX_ID: 7777
+TX_TYPE: DEPOSIT
+FROM_USER_ID: 0
+TO_USER_ID: 888
+AMOUNT: 9999
+TIMESTAMP: 1672531200000
+STATUS: SUCCESS
+DESCRIPTION: "Test ParseFromRead""#;
+
+    let mut cursor = Cursor::new(text_test_data);
+    let text_transactions: TextTransactions = ParseFromRead::parse(&mut cursor)?;
+
+    println!(
+        "   Прочитано через трейт: {} транзакций",
+        text_transactions.0.len()
+    );
+    if !text_transactions.0.is_empty() {
+        println!(
+            "   TX_ID: {}, Описание: '{}'",
+            text_transactions.0[0].tx_id, text_transactions.0[0].description
+        );
+    }
 
     println!("\n=== Все тесты завершены ===");
     Ok(())

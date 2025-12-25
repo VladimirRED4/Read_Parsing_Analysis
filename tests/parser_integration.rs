@@ -1,5 +1,6 @@
 use parser_lib::{
-    BinaryParser, CsvParser, TextParser, Transaction, TransactionStatus, TransactionType,
+    BinaryParser, BinaryTransactions, CsvParser, CsvTransactions, ParseFromRead, TextParser,
+    TextTransactions, Transaction, TransactionStatus, TransactionType,
 };
 use std::io::Cursor;
 
@@ -74,6 +75,7 @@ fn test_cross_format_roundtrip() {
         description: "Test transaction".to_string(),
     };
 
+    // CSV roundtrip
     let mut csv_buffer = Vec::new();
     CsvParser::write_records(&[original.clone()], &mut csv_buffer).unwrap();
     let csv_cursor = Cursor::new(csv_buffer);
@@ -81,6 +83,7 @@ fn test_cross_format_roundtrip() {
     assert_eq!(csv_result.len(), 1);
     assert_eq!(csv_result[0].tx_id, original.tx_id);
 
+    // Text roundtrip
     let mut text_buffer = Vec::new();
     TextParser::write_records(&[original.clone()], &mut text_buffer).unwrap();
     let text_cursor = Cursor::new(text_buffer);
@@ -88,6 +91,7 @@ fn test_cross_format_roundtrip() {
     assert_eq!(text_result.len(), 1);
     assert_eq!(text_result[0].tx_id, original.tx_id);
 
+    // Binary roundtrip
     let mut bin_buffer = Vec::new();
     BinaryParser::write_records(&[original.clone()], &mut bin_buffer).unwrap();
     let mut bin_cursor = Cursor::new(bin_buffer);
@@ -109,19 +113,22 @@ fn test_comparer_functionality() {
         description: "Test".to_string(),
     };
 
+    // CSV
     let mut csv_buffer = Vec::new();
     CsvParser::write_records(&[transaction.clone()], &mut csv_buffer).unwrap();
-    let csv_cursor = std::io::Cursor::new(csv_buffer);
+    let csv_cursor = Cursor::new(csv_buffer);
     let csv_result = CsvParser::parse_records(csv_cursor).unwrap();
 
+    // Text
     let mut text_buffer = Vec::new();
     TextParser::write_records(&[transaction.clone()], &mut text_buffer).unwrap();
-    let text_cursor = std::io::Cursor::new(text_buffer);
+    let text_cursor = Cursor::new(text_buffer);
     let text_result = TextParser::parse_records(text_cursor).unwrap();
 
+    // Binary
     let mut bin_buffer = Vec::new();
     BinaryParser::write_records(&[transaction.clone()], &mut bin_buffer).unwrap();
-    let mut bin_cursor = std::io::Cursor::new(bin_buffer);
+    let mut bin_cursor = Cursor::new(bin_buffer);
     let bin_result = BinaryParser::parse_records(&mut bin_cursor).unwrap();
 
     assert_eq!(csv_result[0], transaction);
@@ -131,4 +138,48 @@ fn test_comparer_functionality() {
     assert_eq!(csv_result[0], text_result[0]);
     assert_eq!(csv_result[0], bin_result[0]);
     assert_eq!(text_result[0], bin_result[0]);
+}
+
+#[test]
+fn test_parsefromread_trait() {
+    let csv_data = r#"TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION
+1001,DEPOSIT,0,501,50000,1672531200000,SUCCESS,"Test""#;
+
+    let mut csv_cursor = Cursor::new(csv_data);
+    let csv_transactions: CsvTransactions = ParseFromRead::parse(&mut csv_cursor).unwrap();
+    assert_eq!(csv_transactions.0.len(), 1);
+    assert_eq!(csv_transactions.0[0].tx_id, 1001);
+
+    let text_data = r#"TX_ID: 1002
+TX_TYPE: DEPOSIT
+FROM_USER_ID: 0
+TO_USER_ID: 501
+AMOUNT: 50000
+TIMESTAMP: 1672531200000
+STATUS: SUCCESS
+DESCRIPTION: "Test""#;
+
+    let mut text_cursor = Cursor::new(text_data);
+    let text_transactions: TextTransactions = ParseFromRead::parse(&mut text_cursor).unwrap();
+    assert_eq!(text_transactions.0.len(), 1);
+    assert_eq!(text_transactions.0[0].tx_id, 1002);
+
+    let transaction = Transaction {
+        tx_id: 1003,
+        tx_type: TransactionType::Deposit,
+        from_user_id: 0,
+        to_user_id: 501,
+        amount: 50000,
+        timestamp: 1672531200000,
+        status: TransactionStatus::Success,
+        description: "Test".to_string(),
+    };
+
+    let mut bin_buffer = Vec::new();
+    BinaryParser::write_records(&[transaction], &mut bin_buffer).unwrap();
+
+    let mut bin_cursor = Cursor::new(&bin_buffer);
+    let bin_transactions: BinaryTransactions = ParseFromRead::parse(&mut bin_cursor).unwrap();
+    assert_eq!(bin_transactions.0.len(), 1);
+    assert_eq!(bin_transactions.0[0].tx_id, 1003);
 }

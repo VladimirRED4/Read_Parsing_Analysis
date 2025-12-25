@@ -1,7 +1,9 @@
 use clap::Parser;
-use parser_lib::{BinaryParser, CsvParser, TextParser, Transaction};
+use parser_lib::{
+    BinaryTransactions, CsvTransactions, ParseFromRead, TextTransactions, Transaction, WriteTo,
+};
 use std::fs::File;
-use std::io::{self, BufReader, BufWriter, Read};
+use std::io::{self, BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 
 #[derive(Parser, Debug)]
@@ -131,48 +133,27 @@ fn read_transactions(
     format: &Format,
     skip_validation: bool,
 ) -> Result<Vec<Transaction>, Box<dyn std::error::Error>> {
-    let file = File::open(input_path)
-        .map_err(|e| format!("Не удалось открыть файл '{}': {}", input_path.display(), e))?;
-
     if skip_validation {
         eprintln!("Предупреждение: проверка бизнес-правил отключена");
     }
 
+    // Открываем файл и создаем BufReader
+    let file = File::open(input_path)?;
+    let mut reader = BufReader::new(file);
+
+    // Используем трейт ParseFromRead для единообразного парсинга
     match format {
         Format::Csv => {
-            let file = File::open(input_path)
-                .map_err(|e| format!("Не удалось открыть CSV файл: {}", e))?;
-
-            CsvParser::parse_records(file).map_err(|e| format!("Ошибка парсинга CSV: {}", e).into())
+            let csv_transactions: CsvTransactions = ParseFromRead::parse(&mut reader)?;
+            Ok(csv_transactions.0)
         }
         Format::Txt => {
-            let file = File::open(input_path)
-                .map_err(|e| format!("Не удалось открыть текстовый файл: {}", e))?;
-
-            TextParser::parse_records(file)
-                .map_err(|e| format!("Ошибка парсинга текстового файла: {}", e).into())
+            let text_transactions: TextTransactions = ParseFromRead::parse(&mut reader)?;
+            Ok(text_transactions.0)
         }
         Format::Bin => {
-            let mut reader = BufReader::new(file);
-
-            let mut magic = [0u8; 4];
-            if reader.read_exact(&mut magic).is_ok() {
-                let expected_magic = [0x59, 0x50, 0x42, 0x4E]; // "YPBN"
-                if magic != expected_magic {
-                    eprintln!(
-                        "Предупреждение: файл не начинается с ожидаемого магического числа 'YPBN'"
-                    );
-                    eprintln!("  Получено: {:?}", magic);
-                    eprintln!("  Ожидалось: {:?}", expected_magic);
-                    eprintln!("  Продолжаем парсинг, но возможны ошибки...");
-                }
-                let file = File::open(input_path)?;
-                let mut reader = BufReader::new(file);
-                BinaryParser::parse_records(&mut reader)
-                    .map_err(|e| format!("Ошибка парсинга бинарного файла: {}", e).into())
-            } else {
-                Err("Файл слишком мал для бинарного формата".into())
-            }
+            let bin_transactions: BinaryTransactions = ParseFromRead::parse(&mut reader)?;
+            Ok(bin_transactions.0)
         }
     }
 }
@@ -201,17 +182,18 @@ fn write_transactions(
             let file = File::create(path)
                 .map_err(|e| format!("Не удалось создать файл '{}': {}", path.display(), e))?;
             let mut writer = BufWriter::new(file);
-            write_to_writer(transactions, format, &mut writer, verbose)
+            // Используем трейт WriteTo для единообразной записи
+            write_using_trait(transactions, format, &mut writer, verbose)
         }
         None => {
             let stdout = io::stdout();
             let mut writer = BufWriter::new(stdout.lock());
-            write_to_writer(transactions, format, &mut writer, verbose)
+            write_using_trait(transactions, format, &mut writer, verbose)
         }
     }
 }
 
-fn write_to_writer<W: std::io::Write>(
+fn write_using_trait<W: std::io::Write>(
     transactions: &[Transaction],
     format: &Format,
     writer: &mut W,
@@ -230,14 +212,18 @@ fn write_to_writer<W: std::io::Write>(
             if verbose {
                 eprintln!("Формат: CSV (заголовок + данные)");
             }
-            CsvParser::write_records(transactions, writer)
+            let csv_transactions = CsvTransactions(transactions.to_vec());
+            csv_transactions
+                .write(writer)
                 .map_err(|e| format!("Ошибка записи CSV: {}", e).into())
         }
         Format::Txt => {
             if verbose {
                 eprintln!("Формат: Text (KEY: VALUE с комментариями)");
             }
-            TextParser::write_records(transactions, writer)
+            let text_transactions = TextTransactions(transactions.to_vec());
+            text_transactions
+                .write(writer)
                 .map_err(|e| format!("Ошибка записи текстового формата: {}", e).into())
         }
         Format::Bin => {
@@ -248,7 +234,9 @@ fn write_to_writer<W: std::io::Write>(
                     std::mem::size_of::<u64>() * 5 + 2
                 ); // 5 u64 + 2 u8
             }
-            BinaryParser::write_records(transactions, writer)
+            let bin_transactions = BinaryTransactions(transactions.to_vec());
+            bin_transactions
+                .write(writer)
                 .map_err(|e| format!("Ошибка записи бинарного формата: {}", e).into())
         }
     }

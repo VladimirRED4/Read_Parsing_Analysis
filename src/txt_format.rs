@@ -1,10 +1,29 @@
-use crate::{ParserError, Transaction, TransactionStatus, TransactionType};
+use crate::{
+    ParseFromRead, ParserError, TextTransactions, Transaction, TransactionStatus, TransactionType,
+    WriteTo,
+};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 
+/// Парсер текстового (key-value) формата транзакций
+///
+/// Текстовый формат имеет следующую структуру:
+/// - Каждая запись состоит из пар "KEY: VALUE"
+/// - Поддерживает комментарии (строки, начинающиеся с #)
+/// - Поддерживает пустые строки как разделители записей
+/// - Описания должны быть в двойных кавычках
 pub struct TextParser;
 
 impl TextParser {
+    /// Парсит текстовые записи транзакций из читаемого потока
+    ///
+    /// # Аргументы
+    /// * `reader` - Читаемый поток (например, файл или буфер)
+    ///
+    /// # Возвращает
+    /// * `Ok(Vec<Transaction>)` - Вектор распарсенных транзакций
+    /// * `Err(ParserError)` - Ошибка парсинга или ввода-вывода
+    ///
     pub fn parse_records<R: Read>(reader: R) -> Result<Vec<Transaction>, ParserError> {
         let content = std::io::read_to_string(reader).map_err(ParserError::Io)?;
 
@@ -51,6 +70,40 @@ impl TextParser {
         Ok(records)
     }
 
+    /// Записывает транзакции в текстовый формат в записываемый поток
+    ///
+    /// # Аргументы
+    /// * `records` - Список транзакций для записи
+    /// * `writer` - Записываемый поток (например, файл или буфер)
+    ///
+    /// # Возвращает
+    /// * `Ok(())` - Успешная запись
+    /// * `Err(ParserError)` - Ошибка записи
+    ///
+    /// # Пример
+    /// ```
+    /// use parser_lib::{TextParser, Transaction, TransactionType, TransactionStatus};
+    /// use std::fs::File;
+    /// use std::io::BufWriter;
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let transactions = vec![Transaction {
+    ///     tx_id: 1001,
+    ///     tx_type: TransactionType::Deposit,
+    ///     from_user_id: 0,
+    ///     to_user_id: 501,
+    ///     amount: 50000,
+    ///     timestamp: 1672531200000,
+    ///     status: TransactionStatus::Success,
+    ///     description: "Test".to_string(),
+    /// }];
+    ///
+    /// let file = File::create("output.txt")?;
+    /// let mut writer = BufWriter::new(file);
+    /// TextParser::write_records(&transactions, &mut writer).unwrap();
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn write_records<W: Write>(
         records: &[Transaction],
         writer: &mut W,
@@ -246,6 +299,7 @@ impl TextParser {
 
         let trimmed = value.trim();
 
+        // Проверяем, что строка начинается и заканчивается кавычками
         if !(trimmed.starts_with('"') && trimmed.ends_with('"')) {
             return Err(ParserError::Parse(format!(
                 "Line {}: DESCRIPTION must be in double quotes, got '{}'",
@@ -253,6 +307,16 @@ impl TextParser {
             )));
         }
 
+        // Проверяем, что строка достаточно длинная для среза
+        // Минимум 2 символа: открывающая и закрывающая кавычки
+        if trimmed.len() < 2 {
+            return Err(ParserError::Parse(format!(
+                "Line {}: DESCRIPTION too short, must be at least 2 characters for quotes",
+                line_number
+            )));
+        }
+
+        // Безопасно извлекаем содержимое между кавычками
         let content = &trimmed[1..trimmed.len() - 1];
         let unescaped = Self::unescape_description(content);
 
@@ -324,6 +388,31 @@ impl TextParser {
 
     fn unescape_description(description: &str) -> String {
         description.replace("\\\"", "\"")
+    }
+}
+
+// Реализуем трейт ParseFromRead для TextTransactions
+impl<R: Read> ParseFromRead<R> for TextTransactions {
+    fn parse(reader: &mut R) -> Result<Self, ParserError> {
+        let transactions = TextParser::parse_records(reader)?;
+        Ok(TextTransactions(transactions))
+    }
+}
+
+// Реализуем трейт WriteTo для TextTransactions
+impl<W: Write> WriteTo<W> for TextTransactions {
+    fn write(&self, writer: &mut W) -> Result<(), ParserError> {
+        TextParser::write_records(&self.0, writer)
+    }
+}
+
+// Также реализуем WriteTo для среза TextTransactions
+impl<W: Write> WriteTo<W> for [TextTransactions] {
+    fn write(&self, writer: &mut W) -> Result<(), ParserError> {
+        for transactions in self {
+            transactions.write(writer)?;
+        }
+        Ok(())
     }
 }
 
@@ -705,5 +794,107 @@ DESCRIPTION: "Test""#;
         if let Err(ParserError::Parse(msg)) = result {
             assert!(msg.contains("positive"));
         }
+    }
+
+    #[test]
+    fn test_parse_description_empty_quotes() {
+        // Две кавычки подряд - пустая строка
+        let text = "TX_ID: 1001\nTX_TYPE: DEPOSIT\nFROM_USER_ID: 0\nTO_USER_ID: 501\nAMOUNT: 50000\nTIMESTAMP: 1672531200000\nSTATUS: SUCCESS\nDESCRIPTION: \"\"";
+
+        let cursor = Cursor::new(text);
+        let result = TextParser::parse_records(cursor);
+
+        assert!(result.is_ok(), "Expected Ok, got {:?}", result);
+        let transactions = result.unwrap();
+        assert_eq!(transactions[0].description, "");
+    }
+
+    #[test]
+    fn test_parse_description_unicode() {
+        let text = "TX_ID: 1001\nTX_TYPE: DEPOSIT\nFROM_USER_ID: 0\nTO_USER_ID: 501\nAMOUNT: 50000\nTIMESTAMP: 1672531200000\nSTATUS: SUCCESS\nDESCRIPTION: \"Тест с Unicode 🚀 и эмодзи 😊\"";
+
+        let cursor = Cursor::new(text);
+        let result = TextParser::parse_records(cursor);
+
+        assert!(result.is_ok(), "Expected Ok, got {:?}", result);
+        let transactions = result.unwrap();
+        assert_eq!(transactions[0].description, "Тест с Unicode 🚀 и эмодзи 😊");
+    }
+
+    #[test]
+    fn test_parse_empty_lines_at_end() {
+        let text = "TX_ID: 1001\nTX_TYPE: DEPOSIT\nFROM_USER_ID: 0\nTO_USER_ID: 501\nAMOUNT: 50000\nTIMESTAMP: 1672531200000\nSTATUS: SUCCESS\nDESCRIPTION: \"Test\"\n\n\n";
+
+        let cursor = Cursor::new(text);
+        let result = TextParser::parse_records(cursor);
+
+        assert!(result.is_ok());
+        let transactions = result.unwrap();
+        assert_eq!(transactions.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_description_with_escaped_backslash() {
+        let text = "TX_ID: 1001\nTX_TYPE: DEPOSIT\nFROM_USER_ID: 0\nTO_USER_ID: 501\nAMOUNT: 50000\nTIMESTAMP: 1672531200000\nSTATUS: SUCCESS\nDESCRIPTION: \"Test with \\\\ backslash\"";
+
+        let cursor = Cursor::new(text);
+        let result = TextParser::parse_records(cursor);
+
+        assert!(result.is_ok(), "Expected Ok, got {:?}", result);
+        let transactions = result.unwrap();
+        // В текущей реализации unescape_description заменяет только \\" на "
+        // Поэтому \\ останется как \\
+        assert_eq!(transactions[0].description, "Test with \\\\ backslash");
+    }
+
+    #[test]
+    fn test_parse_description_with_trailing_spaces() {
+        let text = "TX_ID: 1001\nTX_TYPE: DEPOSIT\nFROM_USER_ID: 0\nTO_USER_ID: 501\nAMOUNT: 50000\nTIMESTAMP: 1672531200000\nSTATUS: SUCCESS\nDESCRIPTION:   \"Test with spaces\"   ";
+
+        let cursor = Cursor::new(text);
+        let result = TextParser::parse_records(cursor);
+
+        assert!(result.is_ok(), "Expected Ok, got {:?}", result);
+        let transactions = result.unwrap();
+        // Пробелы внутри кавычек должны сохраниться
+        assert_eq!(transactions[0].description, "Test with spaces");
+    }
+
+    #[test]
+    fn test_parsefromread_trait_implementation() {
+        let text = "TX_ID: 1001\nTX_TYPE: DEPOSIT\nFROM_USER_ID: 0\nTO_USER_ID: 501\nAMOUNT: 50000\nTIMESTAMP: 1672531200000\nSTATUS: SUCCESS\nDESCRIPTION: \"Test trait implementation\"";
+        let mut cursor = Cursor::new(text);
+
+        // Используем трейт ParseFromRead для TextTransactions
+        let text_transactions: TextTransactions = TextTransactions::parse(&mut cursor).unwrap();
+        let transactions = text_transactions.0; // Достаем Vec<Transaction> из обертки
+
+        assert_eq!(transactions.len(), 1);
+        assert_eq!(transactions[0].tx_id, 1001);
+        assert_eq!(transactions[0].description, "Test trait implementation");
+    }
+
+    #[test]
+    fn test_writeto_trait_implementation() {
+        let transactions = vec![Transaction {
+            tx_id: 1001,
+            tx_type: TransactionType::Deposit,
+            from_user_id: 0,
+            to_user_id: 501,
+            amount: 50000,
+            timestamp: 1672531200000,
+            status: TransactionStatus::Success,
+            description: "Test trait write".to_string(),
+        }];
+
+        let text_transactions = TextTransactions(transactions);
+        let mut buffer = Vec::new();
+
+        // Используем трейт WriteTo для TextTransactions
+        text_transactions.write(&mut buffer).unwrap();
+
+        let output = String::from_utf8(buffer).unwrap();
+        assert!(output.contains("TX_ID: 1001"));
+        assert!(output.contains("DESCRIPTION: \"Test trait write\""));
     }
 }

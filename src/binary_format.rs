@@ -1,17 +1,54 @@
-use crate::{ParserError, Transaction, TransactionStatus, TransactionType};
+use crate::{
+    BinaryTransactions, ParseFromRead, ParserError, Transaction, TransactionStatus,
+    TransactionType, WriteTo,
+};
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std::io::{Read, Write};
 
 const MAGIC: [u8; 4] = [0x59, 0x50, 0x42, 0x4E]; // 'YPBN'
 
+/// Парсер для работы с бинарным форматом банковских транзакций.
+///
+/// `BinaryParser` предоставляет методы для чтения и записи транзакций
+/// в бинарном формате. Этот формат является наиболее эффективным по
+/// занимаемому месту и скорости обработки.
+///
+/// # Структура бинарного формата
+///
+/// Каждая запись в бинарном формате имеет следующую структуру:
+///
+/// ```text
+/// +----------------+----------------+----------------+----------------+
+/// | Магическое     | Размер записи  | TX_ID (u64)    | TX_TYPE (u8)   |
+/// | число 'YPBN'   | (u32, BE)      | (BE)           |                |
+/// | (4 байта)      |                |                |                |
+/// +----------------+----------------+----------------+----------------+
+/// | FROM_USER_ID   | TO_USER_ID     | AMOUNT (i64)   | TIMESTAMP      |
+/// | (u64, BE)      | (u64, BE)      | (BE)           | (u64, BE)      |
+/// +----------------+----------------+----------------+----------------+
+/// | STATUS (u8)    | Длина описания | ОПИСАНИЕ       |                |
+/// |                | (u32, BE)      | (UTF-8)        |                |
+/// +----------------+----------------+----------------+----------------+
+/// ```
+///
+/// Где:
+/// - BE = Big-Endian порядок байтов
+/// - Все числовые поля имеют фиксированный размер
+/// - Длина описания ограничена 1 МБ (1,048,576 байт)
+/// - Размер записи = 46 байт (фиксированная часть) + длина описания
 pub struct BinaryParser;
 
 impl BinaryParser {
-    pub fn parse_records<R: Read>(reader: &mut R) -> Result<Vec<Transaction>, ParserError> {
+    /// Парсит транзакции из бинарного потока данных.
+    ///
+    /// Читает последовательность бинарных записей из входного потока
+    /// и преобразует их в вектор транзакций. Функция читает данные
+    /// до конца потока (EOF) или до первой ошибки парсинга.
+    pub fn parse_records<R: Read>(mut reader: R) -> Result<Vec<Transaction>, ParserError> {
         let mut records = Vec::new();
 
         loop {
-            match BinaryRecord::from_read(reader) {
+            match BinaryRecord::from_read(&mut reader) {
                 Ok(record) => records.push(record.into()),
                 Err(ParserError::Io(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
                 Err(e) => return Err(e),
@@ -21,6 +58,15 @@ impl BinaryParser {
         Ok(records)
     }
 
+    /// Записывает транзакции в бинарный формат в записываемый поток
+    ///
+    /// # Аргументы
+    /// * `records` - Список транзакций для записи
+    /// * `writer` - Записываемый поток (например, файл или буфер)
+    ///
+    /// # Возвращает
+    /// * `Ok(())` - Успешная запись
+    /// * `Err(ParserError)` - Ошибка записи
     pub fn write_records<W: Write>(
         records: &[Transaction],
         writer: &mut W,
@@ -33,7 +79,33 @@ impl BinaryParser {
     }
 }
 
+// Реализуем трейт ParseFromRead для BinaryTransactions
+impl<R: Read> ParseFromRead<R> for BinaryTransactions {
+    fn parse(reader: &mut R) -> Result<Self, ParserError> {
+        let transactions = BinaryParser::parse_records(reader)?;
+        Ok(BinaryTransactions(transactions))
+    }
+}
+
+// Реализуем трейт WriteTo для BinaryTransactions
+impl<W: Write> WriteTo<W> for BinaryTransactions {
+    fn write(&self, writer: &mut W) -> Result<(), ParserError> {
+        BinaryParser::write_records(&self.0, writer)
+    }
+}
+
+// Реализуем WriteTo для среза BinaryTransactions
+impl<W: Write> WriteTo<W> for [BinaryTransactions] {
+    fn write(&self, writer: &mut W) -> Result<(), ParserError> {
+        for transactions in self {
+            transactions.write(writer)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
+
 pub struct BinaryRecord {
     pub tx_id: u64,
     pub tx_type: TransactionType,
@@ -97,11 +169,31 @@ impl BinaryRecord {
 
         let desc_len = reader.read_u32::<BigEndian>()?;
 
-        let expected_size = 8 + 1 + 8 + 8 + 8 + 8 + 1 + 4 + desc_len as u64;
+        let fixed_size: u64 = 8 +  // tx_id
+                        1 +   // tx_type
+                        8 +   // from_user_id
+                        8 +   // to_user_id
+                        8 +   // amount
+                        8 +   // timestamp
+                        1 +   // status
+                        4; // desc_len
+
+        let expected_size = fixed_size.checked_add(desc_len as u64).ok_or_else(|| {
+            ParserError::Parse("Record size overflow when calculating total size".to_string())
+        })?;
+
         if record_size as u64 != expected_size {
             return Err(ParserError::Parse(format!(
                 "Record size mismatch: header says {}, expected {}",
                 record_size, expected_size
+            )));
+        }
+
+        const MAX_DESC_LEN: u32 = 1024 * 1024;
+        if desc_len > MAX_DESC_LEN {
+            return Err(ParserError::Parse(format!(
+                "Description too long: {} bytes, maximum is {}",
+                desc_len, MAX_DESC_LEN
             )));
         }
 
@@ -141,9 +233,35 @@ impl BinaryRecord {
         writer.write_all(&MAGIC)?;
 
         let desc_len = self.description.len() as u32;
-        let record_size = 8 + 1 + 8 + 8 + 8 + 8 + 1 + 4 + desc_len;
 
-        writer.write_u32::<BigEndian>(record_size)?;
+        const MAX_DESC_LEN: u32 = 1024 * 1024;
+        if desc_len > MAX_DESC_LEN {
+            return Err(ParserError::Parse(format!(
+                "Description too long: {} bytes, maximum is {}",
+                desc_len, MAX_DESC_LEN
+            )));
+        }
+
+        let fixed_size: u64 = 8 +  // tx_id
+                        1 +   // tx_type
+                        8 +   // from_user_id
+                        8 +   // to_user_id
+                        8 +   // amount
+                        8 +   // timestamp
+                        1 +   // status
+                        4; // desc_len
+
+        let record_size = fixed_size.checked_add(desc_len as u64).ok_or_else(|| {
+            ParserError::Parse("Record size overflow when calculating total size".to_string())
+        })?;
+
+        if record_size > u32::MAX as u64 {
+            return Err(ParserError::Parse(
+                "Record size exceeds maximum allowed size".to_string(),
+            ));
+        }
+
+        writer.write_u32::<BigEndian>(record_size as u32)?;
 
         writer.write_u64::<BigEndian>(self.tx_id)?;
 
@@ -231,6 +349,8 @@ impl From<&BinaryRecord> for Transaction {
 mod tests {
     use super::*;
     use std::io::Cursor;
+
+    const MAX_DESC_LEN: u32 = 1024 * 1024;
 
     #[test]
     fn test_binary_record_roundtrip() {
@@ -349,5 +469,101 @@ mod tests {
 
         assert_eq!(parsed_records[0], transaction1);
         assert_eq!(parsed_records[1], transaction2);
+    }
+
+    #[test]
+    fn test_size_overflow_protection() {
+        let record = BinaryRecord {
+            tx_id: 1001,
+            tx_type: TransactionType::Deposit,
+            from_user_id: 0,
+            to_user_id: 501,
+            amount: 50000,
+            timestamp: 1672531200000,
+            status: TransactionStatus::Success,
+            description: "x".repeat((MAX_DESC_LEN + 100) as usize),
+        };
+
+        let mut buffer = Vec::new();
+        let result = record.write_to(&mut buffer);
+        assert!(matches!(result, Err(ParserError::Parse(_))));
+        if let Err(ParserError::Parse(msg)) = result {
+            assert!(msg.contains("too long"));
+        }
+    }
+
+    #[test]
+    fn test_size_calculation_overflow() {
+        let mut buffer = Vec::new();
+
+        buffer.extend_from_slice(&MAGIC);
+
+        let desc_len = MAX_DESC_LEN + 100;
+
+        let fixed_size: u64 = 46;
+        let expected_size = fixed_size + desc_len as u64;
+
+        buffer.extend_from_slice(&(expected_size as u32).to_be_bytes());
+
+        buffer.extend_from_slice(&1u64.to_be_bytes()); // tx_id
+        buffer.push(0); // tx_type = DEPOSIT
+        buffer.extend_from_slice(&0u64.to_be_bytes()); // from_user_id
+        buffer.extend_from_slice(&1u64.to_be_bytes()); // to_user_id
+        buffer.extend_from_slice(&1i64.to_be_bytes()); // amount
+        buffer.extend_from_slice(&1u64.to_be_bytes()); // timestamp
+        buffer.push(0); // status = SUCCESS
+        buffer.extend_from_slice(&desc_len.to_be_bytes());
+
+        let mut cursor = Cursor::new(&buffer);
+        let result = BinaryRecord::from_read(&mut cursor);
+
+        assert!(matches!(result, Err(ParserError::Parse(_))));
+
+        if let Err(ParserError::Parse(msg)) = result {
+            assert!(
+                msg.contains("too long"),
+                "Expected error about description length, got: '{}'",
+                msg
+            );
+        }
+    }
+
+    #[test]
+    fn test_valid_large_description() {
+        let description = "x".repeat((MAX_DESC_LEN - 100) as usize);
+
+        let record = BinaryRecord {
+            tx_id: 1001,
+            tx_type: TransactionType::Deposit,
+            from_user_id: 0,
+            to_user_id: 501,
+            amount: 50000,
+            timestamp: 1672531200000,
+            status: TransactionStatus::Success,
+            description,
+        };
+
+        let mut buffer = Vec::new();
+        record.write_to(&mut buffer).unwrap();
+
+        let mut cursor = Cursor::new(&buffer);
+        let parsed = BinaryRecord::from_read(&mut cursor).unwrap();
+
+        assert_eq!(record.description.len(), parsed.description.len());
+        assert_eq!(record, parsed);
+    }
+
+    #[test]
+    fn test_record_size_exceeds_u32() {
+        let mut buffer = Vec::new();
+
+        buffer.extend_from_slice(&MAGIC);
+
+        buffer.extend_from_slice(&0u32.to_be_bytes());
+
+        let mut cursor = Cursor::new(&buffer);
+        let result = BinaryRecord::from_read(&mut cursor);
+
+        assert!(matches!(result, Err(_)));
     }
 }

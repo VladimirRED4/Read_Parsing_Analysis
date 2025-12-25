@@ -1,5 +1,9 @@
-use parser_lib::{BinaryParser, BinaryRecord, Transaction, TransactionStatus, TransactionType};
+use parser_lib::{
+    BinaryParser, BinaryRecord, BinaryTransactions, ParseFromRead, Transaction, TransactionStatus,
+    TransactionType,
+};
 use std::io::Cursor;
+use std::slice::from_ref;
 
 fn main() -> Result<(), parser_lib::ParserError> {
     println!("=== Тестирование бинарного формата ===\n");
@@ -122,6 +126,35 @@ fn main() -> Result<(), parser_lib::ParserError> {
     if parsed_empty.description.is_empty() {
         println!("   ✓ Пустое описание корректно обработано");
         println!("   Размер записи: {} байт", buffer3.len());
+    }
+
+    println!("\n6. Тест трейта ParseFromRead для BinaryTransactions:");
+    let test_transaction = Transaction {
+        tx_id: 7777,
+        tx_type: TransactionType::Deposit,
+        from_user_id: 0,
+        to_user_id: 888,
+        amount: 9999,
+        timestamp: 1672531200000,
+        status: TransactionStatus::Success,
+        description: "Test ParseFromRead".to_string(),
+    };
+
+    let mut test_buffer = Vec::new();
+    BinaryParser::write_records(from_ref(&test_transaction), &mut test_buffer)?;
+
+    let mut cursor = Cursor::new(&test_buffer);
+    let bin_transactions: BinaryTransactions = ParseFromRead::parse(&mut cursor)?;
+
+    println!(
+        "   Прочитано через трейт: {} транзакций",
+        bin_transactions.0.len()
+    );
+    if !bin_transactions.0.is_empty() {
+        println!(
+            "   TX_ID: {}, Описание: '{}'",
+            bin_transactions.0[0].tx_id, bin_transactions.0[0].description
+        );
     }
 
     println!("\n=== Все тесты завершены ===");
