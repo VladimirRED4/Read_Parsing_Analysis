@@ -156,7 +156,6 @@ fn test_comparer_different_files_exit_code_2() {
         .output()
         .expect("Failed to execute command");
 
-    // Проверяем код выхода 2
     assert_eq!(
         output.status.code(),
         Some(2),

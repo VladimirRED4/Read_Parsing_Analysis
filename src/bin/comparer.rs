@@ -92,10 +92,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("  Из файла 2: {}", transactions2.len());
     }
 
-    // Запускаем сравнение и получаем статус
     match compare_transactions(&transactions1, &transactions2, &args) {
         Ok(true) => {
-            // Файлы идентичны
             println!(
                 "Файлы '{}' и '{}' идентичны.",
                 args.file1.display(),
@@ -104,18 +102,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         Ok(false) => {
-            // Найдены различия
             std::process::exit(2);
         }
         Err(e) => {
-            // Ошибка в логике сравнения
             eprintln!("Ошибка при сравнении: {}", e);
             std::process::exit(3);
         }
     }
 }
 
-// Изменяем возвращаемый тип функции сравнения
 fn compare_transactions(
     txs1: &[Transaction],
     txs2: &[Transaction],
@@ -125,12 +120,12 @@ fn compare_transactions(
         println!("Файлы содержат разное количество транзакций:");
         println!("  В '{}': {} транзакций", args.file1.display(), txs1.len());
         println!("  В '{}': {} транзакций", args.file2.display(), txs2.len());
-        return Ok(false); // Разная длина = несоответствие
+        return Ok(false);
     }
 
     if txs1.is_empty() {
         println!("Оба файла пусты.");
-        return Ok(true); // Оба пустые = соответствие
+        return Ok(true);
     }
 
     let mut mismatches = Vec::new();
@@ -148,7 +143,7 @@ fn compare_transactions(
         if args.verbose {
             println!("Все {} транзакций совпадают.", identical_count);
         }
-        Ok(true) // Все транзакции идентичны
+        Ok(true)
     } else {
         println!(
             "Найдено {} несоответствий из {} транзакций:",
@@ -176,7 +171,7 @@ fn compare_transactions(
             println!("  Всего транзакций: {}", txs1.len());
         }
 
-        Ok(false) // Есть несоответствия
+        Ok(false)
     }
 }
 
@@ -344,7 +339,7 @@ mod tests {
     #[test]
     fn test_transactions_not_equal() {
         let tx1 = create_test_transaction(1001);
-        let tx2 = create_test_transaction(1002); // Разный ID
+        let tx2 = create_test_transaction(1002);
 
         let args = Args {
             file1: PathBuf::from("test1.csv"),
@@ -371,7 +366,6 @@ mod tests {
             "1001,DEPOSIT,0,501,50000,1672531200000,SUCCESS,\"Test\""
         )?;
 
-        // Используем исправленную функцию read_transactions
         let transactions = read_transactions(&file.path().to_path_buf(), &Format::Csv)?;
         assert_eq!(transactions.len(), 1);
         assert_eq!(transactions[0].tx_id, 1001);
@@ -391,7 +385,6 @@ mod tests {
         writeln!(file, "STATUS: SUCCESS")?;
         writeln!(file, "DESCRIPTION: \"Test\"")?;
 
-        // Используем исправленную функцию read_transactions
         let transactions = read_transactions(&file.path().to_path_buf(), &Format::Txt)?;
         assert_eq!(transactions.len(), 1);
         assert_eq!(transactions[0].tx_id, 1001);
@@ -434,7 +427,6 @@ mod tests {
         let empty: Vec<Transaction> = Vec::new();
         let result = compare_transactions(&empty, &empty, &args);
         assert!(result.is_ok());
-        // Пустые списки должны считаться идентичными
         assert_eq!(result.unwrap(), true);
     }
 
@@ -458,7 +450,6 @@ mod tests {
 
         let result = compare_transactions(&list1, &list2, &args);
         assert!(result.is_ok());
-        // Разные длины должны возвращать false
         assert_eq!(result.unwrap(), false);
     }
 
@@ -482,7 +473,6 @@ mod tests {
 
         let result = compare_transactions(&list1, &list2, &args);
         assert!(result.is_ok());
-        // Идентичные списки должны возвращать true
         assert_eq!(result.unwrap(), true);
     }
 
@@ -500,14 +490,13 @@ mod tests {
 
         let tx1 = create_test_transaction(1001);
         let mut tx2 = create_test_transaction(1002);
-        tx2.amount = 60000; // Измененная сумма
+        tx2.amount = 60000;
 
         let list1 = vec![tx1.clone(), create_test_transaction(1002)];
         let list2 = vec![tx1, tx2];
 
         let result = compare_transactions(&list1, &list2, &args);
         assert!(result.is_ok());
-        // Списки с различиями должны возвращать false
         assert_eq!(result.unwrap(), false);
     }
 }

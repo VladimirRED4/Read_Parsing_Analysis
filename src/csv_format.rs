@@ -377,7 +377,7 @@ impl<W: Write> WriteTo<W> for CsvTransactions {
     }
 }
 
-// Также реализуем WriteTo для среза CsvTransactions
+// Реализуем трейт WriteTo для среза CsvTransactions
 impl<W: Write> WriteTo<W> for [CsvTransactions] {
     fn write(&self, writer: &mut W) -> Result<(), ParserError> {
         for transactions in self {

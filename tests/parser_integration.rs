@@ -75,7 +75,6 @@ fn test_cross_format_roundtrip() {
         description: "Test transaction".to_string(),
     };
 
-    // CSV roundtrip
     let mut csv_buffer = Vec::new();
     CsvParser::write_records(&[original.clone()], &mut csv_buffer).unwrap();
     let csv_cursor = Cursor::new(csv_buffer);
@@ -83,7 +82,6 @@ fn test_cross_format_roundtrip() {
     assert_eq!(csv_result.len(), 1);
     assert_eq!(csv_result[0].tx_id, original.tx_id);
 
-    // Text roundtrip
     let mut text_buffer = Vec::new();
     TextParser::write_records(&[original.clone()], &mut text_buffer).unwrap();
     let text_cursor = Cursor::new(text_buffer);
@@ -91,7 +89,6 @@ fn test_cross_format_roundtrip() {
     assert_eq!(text_result.len(), 1);
     assert_eq!(text_result[0].tx_id, original.tx_id);
 
-    // Binary roundtrip
     let mut bin_buffer = Vec::new();
     BinaryParser::write_records(&[original.clone()], &mut bin_buffer).unwrap();
     let mut bin_cursor = Cursor::new(bin_buffer);
@@ -113,19 +110,16 @@ fn test_comparer_functionality() {
         description: "Test".to_string(),
     };
 
-    // CSV
     let mut csv_buffer = Vec::new();
     CsvParser::write_records(&[transaction.clone()], &mut csv_buffer).unwrap();
     let csv_cursor = Cursor::new(csv_buffer);
     let csv_result = CsvParser::parse_records(csv_cursor).unwrap();
 
-    // Text
     let mut text_buffer = Vec::new();
     TextParser::write_records(&[transaction.clone()], &mut text_buffer).unwrap();
     let text_cursor = Cursor::new(text_buffer);
     let text_result = TextParser::parse_records(text_cursor).unwrap();
 
-    // Binary
     let mut bin_buffer = Vec::new();
     BinaryParser::write_records(&[transaction.clone()], &mut bin_buffer).unwrap();
     let mut bin_cursor = Cursor::new(bin_buffer);

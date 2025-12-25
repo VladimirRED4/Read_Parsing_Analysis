@@ -104,20 +104,193 @@ impl<W: Write> WriteTo<W> for [BinaryTransactions] {
     }
 }
 
+/// Бинарное представление банковской транзакции.
+///
+/// Структура содержит все поля транзакции в формате, оптимизированном
+/// для хранения и передачи. Используется бинарным парсером для
+/// чтения и записи данных.
+///
+/// # Пример
+///
+/// ```
+/// use parser_lib::{BinaryRecord, TransactionType, TransactionStatus};
+///
+/// let record = BinaryRecord {
+///     tx_id: 1001,
+///     tx_type: TransactionType::Deposit,
+///     from_user_id: 0,
+///     to_user_id: 501,
+///     amount: 50000,
+///     timestamp: 1672531200000,
+///     status: TransactionStatus::Success,
+///     description: "Initial deposit".to_string(),
+/// };
+/// ```
 #[derive(Debug, Clone, PartialEq)]
-
 pub struct BinaryRecord {
+    /// Уникальный идентификатор транзакции
     pub tx_id: u64,
+
+    /// Тип транзакции (депозит, перевод или вывод)
     pub tx_type: TransactionType,
+
+    /// ID отправителя средств (0 для депозитов)
     pub from_user_id: u64,
+
+    /// ID получателя средств (0 для выводов)
     pub to_user_id: u64,
+
+    /// Сумма транзакции (может быть отрицательной)
     pub amount: i64,
+
+    /// Временная метка в миллисекундах с эпохи UNIX
     pub timestamp: u64,
+
+    /// Статус выполнения транзакции
     pub status: TransactionStatus,
+
+    /// Описание транзакции в UTF-8 (максимум 1 МБ)
     pub description: String,
 }
 
 impl BinaryRecord {
+    /// Считывает и парсит бинарную запись из потока данных.
+    ///
+    /// Эта функция читает данные из предоставленного потока в соответствии
+    /// с бинарным форматом транзакций и создает экземпляр `BinaryRecord`.
+    /// Формат данных должен строго соответствовать спецификации.
+    ///
+    /// # Алгоритм работы
+    ///
+    /// 1. Проверяет магическое число 'YPBN' (4 байта)
+    /// 2. Читает размер записи (u32, big-endian)
+    /// 3. Читает основные поля транзакции (ID, тип, пользователи, сумма, время)
+    /// 4. Проверяет статус транзакции
+    /// 5. Читает длину описания и само описание в UTF-8
+    /// 6. Валидирует размеры и целостность данных
+    /// 7. Нормализует описание (убирает кавычки при необходимости)
+    ///
+    /// # Аргументы
+    ///
+    /// * `reader` - Мутабельная ссылка на поток, реализующий трейт `Read`.
+    ///   Поток должен содержать корректные бинарные данные в формате транзакций.
+    ///
+    /// # Возвращаемое значение
+    ///
+    /// * `Ok(BinaryRecord)` - Успешно распарсенная бинарная запись
+    /// * `Err(ParserError)` - Ошибка парсинга или ввода-вывода
+    ///
+    /// # Ошибки
+    ///
+    /// Функция может вернуть следующие ошибки:
+    ///
+    /// * `ParserError::Io` - Ошибка чтения из потока
+    /// * `ParserError::Parse` с сообщениями:
+    ///   - "Invalid magic number" - неверное магическое число
+    ///   - "Invalid TX_TYPE" - некорректный тип транзакции
+    ///   - "Invalid STATUS" - некорректный статус транзакции
+    ///   - "Record size mismatch" - несоответствие размера записи
+    ///   - "Description too long" - описание превышает лимит (1 МБ)
+    ///   - "Invalid UTF-8 in description" - описание содержит некорректный UTF-8
+    ///
+    /// # Примеры
+    ///
+    /// ## Базовое использование
+    ///
+    /// ```no_run
+    /// use parser_lib::BinaryRecord;
+    /// use std::fs::File;
+    /// use std::io::BufReader;
+    ///
+    /// fn parse_binary_file() -> Result<(), parser_lib::ParserError> {
+    ///     let file = File::open("transactions.bin")?;
+    ///     let mut reader = BufReader::new(file);
+    ///
+    ///     // Чтение первой записи
+    ///     let record = BinaryRecord::from_read(&mut reader)?;
+    ///     println!("Прочитана транзакция ID: {}", record.tx_id);
+    ///
+    ///     Ok(())
+    /// }
+    /// ```
+    ///
+    /// ## Чтение нескольких записей
+    ///
+    /// ```no_run
+    /// use parser_lib::BinaryRecord;
+    /// use std::io::Cursor;
+    ///
+    /// fn parse_multiple_records(data: &[u8]) -> Result<Vec<BinaryRecord>, parser_lib::ParserError> {
+    ///     let mut cursor = Cursor::new(data);
+    ///     let mut records = Vec::new();
+    ///
+    ///     loop {
+    ///         match BinaryRecord::from_read(&mut cursor) {
+    ///             Ok(record) => records.push(record),
+    ///             Err(parser_lib::ParserError::Io(ref e))
+    ///                 if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+    ///             Err(e) => return Err(e),
+    ///         }
+    ///     }
+    ///
+    ///     Ok(records)
+    /// }
+    /// ```
+    ///
+    /// ## Обработка ошибок
+    ///
+    /// ```no_run
+    /// use parser_lib::{BinaryRecord, ParserError};
+    /// use std::io::Cursor;
+    ///
+    /// fn try_parse_record(data: &[u8]) -> Result<(), ParserError> {
+    ///     let mut cursor = Cursor::new(data);
+    ///
+    ///     match BinaryRecord::from_read(&mut cursor) {
+    ///         Ok(record) => {
+    ///             println!("Успешно: ID={}, сумма={}", record.tx_id, record.amount);
+    ///             Ok(())
+    ///         }
+    ///         Err(ParserError::Parse(msg)) => {
+    ///             eprintln!("Ошибка формата: {}", msg);
+    ///             Err(ParserError::Parse(msg))
+    ///         }
+    ///         Err(ParserError::Io(e)) => {
+    ///             eprintln!("Ошибка ввода-вывода: {}", e);
+    ///             Err(ParserError::Io(e))
+    ///         }
+    ///         Err(e) => {
+    ///             eprintln!("Другая ошибка: {}", e);
+    ///             Err(e)
+    ///         }
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// # Примечания
+    ///
+    /// 1. **Порядок байтов**: Все числовые значения читаются в big-endian порядке
+    /// 2. **Размеры полей**:
+    ///    - `tx_id`, `from_user_id`, `to_user_id`, `timestamp`: 8 байт каждое
+    ///    - `amount`: 8 байт со знаком
+    ///    - `tx_type`, `status`: по 1 байту
+    ///    - Описание: переменной длины (до 1 МБ)
+    /// 3. **Магическое число**: Должно быть `[0x59, 0x50, 0x42, 0x4E]` ('YPBN')
+    /// 4. **Валидация**: Проверяются все поля на корректность и целостность
+    /// 5. **Нормализация описания**: Если описание начинается и заканчивается кавычками,
+    ///    они удаляются. Также обрезаются лишние пробелы.
+    ///
+    /// # Ограничения
+    ///
+    /// * Максимальная длина описания: 1,048,576 байт (1 МБ)
+    /// * Размер записи не может превышать `u32::MAX`
+    /// * Поддерживаются только UTF-8 описания
+    ///
+    /// # Смотрите также
+    ///
+    /// * [`BinaryParser::parse_records`] - для чтения нескольких записей
+    /// * [`BinaryRecord::write_to`] - для записи обратно в поток
+    /// * [`BinaryTransactions`] - обертка для работы с коллекцией записей
     pub fn from_read<R: Read>(reader: &mut R) -> Result<Self, ParserError> {
         let mut magic = [0u8; 4];
         reader.read_exact(&mut magic)?;
@@ -228,7 +401,45 @@ impl BinaryRecord {
             trimmed.to_string()
         }
     }
-
+    /// Записывает бинарную запись в указанный поток.
+    ///
+    /// Преобразует структуру в бинарный формат и записывает её в поток.
+    /// Формат соответствует спецификации бинарного формата транзакций.
+    ///
+    /// # Аргументы
+    ///
+    /// * `writer` - Мутабельная ссылка на поток для записи
+    ///
+    /// # Возвращает
+    ///
+    /// * `Ok(())` - Успешная запись
+    /// * `Err(ParserError)` - Ошибка записи или валидации
+    ///
+    /// # Ошибки
+    ///
+    /// * `ParserError::Io` - Ошибка записи в поток
+    /// * `ParserError::Parse` - Описание превышает лимит в 1 МБ
+    ///
+    /// # Пример
+    ///
+    /// ```
+    /// use parser_lib::{BinaryRecord, TransactionType, TransactionStatus};
+    /// use std::io::Cursor;
+    ///
+    /// let record = BinaryRecord {
+    ///     tx_id: 1001,
+    ///     tx_type: TransactionType::Deposit,
+    ///     from_user_id: 0,
+    ///     to_user_id: 501,
+    ///     amount: 50000,
+    ///     timestamp: 1672531200000,
+    ///     status: TransactionStatus::Success,
+    ///     description: "Test".to_string(),
+    /// };
+    ///
+    /// let mut buffer = Vec::new();
+    /// record.write_to(&mut buffer).unwrap();
+    /// ```
     pub fn write_to<W: Write>(&self, writer: &mut W) -> Result<(), ParserError> {
         writer.write_all(&MAGIC)?;
 

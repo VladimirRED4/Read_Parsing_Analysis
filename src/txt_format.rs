@@ -299,7 +299,6 @@ impl TextParser {
 
         let trimmed = value.trim();
 
-        // Проверяем, что строка начинается и заканчивается кавычками
         if !(trimmed.starts_with('"') && trimmed.ends_with('"')) {
             return Err(ParserError::Parse(format!(
                 "Line {}: DESCRIPTION must be in double quotes, got '{}'",
@@ -307,8 +306,6 @@ impl TextParser {
             )));
         }
 
-        // Проверяем, что строка достаточно длинная для среза
-        // Минимум 2 символа: открывающая и закрывающая кавычки
         if trimmed.len() < 2 {
             return Err(ParserError::Parse(format!(
                 "Line {}: DESCRIPTION too short, must be at least 2 characters for quotes",
@@ -316,7 +313,6 @@ impl TextParser {
             )));
         }
 
-        // Безопасно извлекаем содержимое между кавычками
         let content = &trimmed[1..trimmed.len() - 1];
         let unescaped = Self::unescape_description(content);
 
@@ -406,7 +402,7 @@ impl<W: Write> WriteTo<W> for TextTransactions {
     }
 }
 
-// Также реализуем WriteTo для среза TextTransactions
+// Реализуем трейт WriteTo для среза TextTransactions
 impl<W: Write> WriteTo<W> for [TextTransactions] {
     fn write(&self, writer: &mut W) -> Result<(), ParserError> {
         for transactions in self {
@@ -798,7 +794,6 @@ DESCRIPTION: "Test""#;
 
     #[test]
     fn test_parse_description_empty_quotes() {
-        // Две кавычки подряд - пустая строка
         let text = "TX_ID: 1001\nTX_TYPE: DEPOSIT\nFROM_USER_ID: 0\nTO_USER_ID: 501\nAMOUNT: 50000\nTIMESTAMP: 1672531200000\nSTATUS: SUCCESS\nDESCRIPTION: \"\"";
 
         let cursor = Cursor::new(text);
@@ -842,8 +837,6 @@ DESCRIPTION: "Test""#;
 
         assert!(result.is_ok(), "Expected Ok, got {:?}", result);
         let transactions = result.unwrap();
-        // В текущей реализации unescape_description заменяет только \\" на "
-        // Поэтому \\ останется как \\
         assert_eq!(transactions[0].description, "Test with \\\\ backslash");
     }
 
@@ -856,7 +849,6 @@ DESCRIPTION: "Test""#;
 
         assert!(result.is_ok(), "Expected Ok, got {:?}", result);
         let transactions = result.unwrap();
-        // Пробелы внутри кавычек должны сохраниться
         assert_eq!(transactions[0].description, "Test with spaces");
     }
 

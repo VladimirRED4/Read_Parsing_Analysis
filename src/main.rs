@@ -137,11 +137,9 @@ fn read_transactions(
         eprintln!("Предупреждение: проверка бизнес-правил отключена");
     }
 
-    // Открываем файл и создаем BufReader
     let file = File::open(input_path)?;
     let mut reader = BufReader::new(file);
 
-    // Используем трейт ParseFromRead для единообразного парсинга
     match format {
         Format::Csv => {
             let csv_transactions: CsvTransactions = ParseFromRead::parse(&mut reader)?;
@@ -182,7 +180,6 @@ fn write_transactions(
             let file = File::create(path)
                 .map_err(|e| format!("Не удалось создать файл '{}': {}", path.display(), e))?;
             let mut writer = BufWriter::new(file);
-            // Используем трейт WriteTo для единообразной записи
             write_using_trait(transactions, format, &mut writer, verbose)
         }
         None => {
@@ -232,7 +229,7 @@ fn write_using_trait<W: std::io::Write>(
                 eprintln!(
                     "Размер одной записи: ~{} байт + размер описания",
                     std::mem::size_of::<u64>() * 5 + 2
-                ); // 5 u64 + 2 u8
+                );
             }
             let bin_transactions = BinaryTransactions(transactions.to_vec());
             bin_transactions

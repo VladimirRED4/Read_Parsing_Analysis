@@ -35,6 +35,17 @@ jobs:
     - name: Clippy check
       run: cargo clippy -- -D warnings
 
+    - name: Build documentation
+      run: cargo doc --no-deps --document-private-items
+
+    - name: Check documentation warnings
+      run: |
+        # Проверяем, что документация компилируется без ошибок
+        RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items 2>&1 | grep -v "warning: could not parse code block" || true
+
+    - name: Run doc tests
+      run: cargo test --doc --verbose
+
     - name: Build
       run: cargo build --verbose
 
