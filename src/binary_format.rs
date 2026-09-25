@@ -395,7 +395,10 @@ impl BinaryRecord {
     fn normalize_description(description: &str) -> String {
         let trimmed = description.trim();
 
-        if trimmed.starts_with('"') && trimmed.ends_with('"') {
+        // Проверяем длину: одна кавычка одновременно является и началом, и концом
+        // строки, поэтому без этой проверки срез `[1..len - 1]` был бы `[1..0]`
+        // и приводил бы к панике (begin > end).
+        if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
             trimmed[1..trimmed.len() - 1].to_string()
         } else {
             trimmed.to_string()
@@ -776,5 +779,35 @@ mod tests {
         let result = BinaryRecord::from_read(&mut cursor);
 
         assert!(matches!(result, Err(_)));
+    }
+
+    #[test]
+    fn test_normalize_description_single_quote() {
+        // Одна кавычка не должна приводить к панике (ранее срез [1..0])
+        assert_eq!(BinaryRecord::normalize_description("\""), "\"");
+        assert_eq!(BinaryRecord::normalize_description("  \"  "), "\"");
+    }
+
+    #[test]
+    fn test_binary_record_description_single_quote_roundtrip() {
+        let original = BinaryRecord {
+            tx_id: 1001,
+            tx_type: TransactionType::Deposit,
+            from_user_id: 0,
+            to_user_id: 501,
+            amount: 50000,
+            timestamp: 1672531200000,
+            status: TransactionStatus::Success,
+            description: "\"".to_string(),
+        };
+
+        let mut buffer = Vec::new();
+        original.write_to(&mut buffer).unwrap();
+
+        let mut cursor = Cursor::new(&buffer);
+        let parsed = BinaryRecord::from_read(&mut cursor).unwrap();
+
+        assert_eq!(original, parsed);
+        assert_eq!(parsed.description, "\"");
     }
 }

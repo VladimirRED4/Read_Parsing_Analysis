@@ -353,7 +353,10 @@ impl CsvParser {
     fn unescape_description(description: &str) -> String {
         let trimmed = description.trim();
 
-        if trimmed.starts_with('"') && trimmed.ends_with('"') {
+        // Проверяем длину: одна кавычка одновременно является и началом, и концом
+        // строки, поэтому без этой проверки срез `[1..len - 1]` был бы `[1..0]`
+        // и приводил бы к панике (begin > end).
+        if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
             let content = &trimmed[1..trimmed.len() - 1];
             content.replace("\"\"", "\"")
         } else {
@@ -651,6 +654,13 @@ mod tests {
     }
 
     #[test]
+    fn test_unescape_description_single_quote() {
+        // Одна кавычка не должна приводить к панике (ранее срез [1..0])
+        assert_eq!(CsvParser::unescape_description("\""), "\"");
+        assert_eq!(CsvParser::unescape_description(" \""), "\"");
+    }
+
+    #[test]
     fn test_parse_negative_amount_in_csv() {
         let csv = r#"TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION
 1001,WITHDRAWAL,501,0,-1000,1672538400000,PENDING,"Test""#;
@@ -720,5 +730,42 @@ mod tests {
         assert_eq!(parsed[0].tx_id, original.tx_id);
         assert_eq!(parsed[0].tx_type, original.tx_type);
         assert_eq!(parsed[0].amount, original.amount);
+    }
+
+    #[test]
+    fn test_parse_csv_description_single_quote() {
+        // Поле DESCRIPTION, содержащее ровно одну кавычку, в файле записано как """"
+        let csv = "TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION\n1001,DEPOSIT,0,501,50000,1672531200000,SUCCESS,\"\"\"\"";
+
+        let cursor = Cursor::new(csv);
+        let result = CsvParser::parse_records(cursor);
+
+        assert!(result.is_ok(), "Expected Ok, got {:?}", result);
+        let transactions = result.unwrap();
+        assert_eq!(transactions.len(), 1);
+        assert_eq!(transactions[0].description, "\"");
+    }
+
+    #[test]
+    fn test_roundtrip_description_single_quote() {
+        let original = Transaction {
+            tx_id: 1001,
+            tx_type: TransactionType::Deposit,
+            from_user_id: 0,
+            to_user_id: 501,
+            amount: 50000,
+            timestamp: 1672531200000,
+            status: TransactionStatus::Success,
+            description: "\"".to_string(),
+        };
+
+        let mut buffer = Vec::new();
+        CsvParser::write_records(&[original.clone()], &mut buffer).unwrap();
+
+        let cursor = Cursor::new(&buffer);
+        let parsed = CsvParser::parse_records(cursor).unwrap();
+
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0], original);
     }
 }
