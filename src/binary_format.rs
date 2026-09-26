@@ -42,12 +42,13 @@ impl BinaryParser {
     /// Парсит транзакции из бинарного потока данных.
     ///
     /// Читает последовательность бинарных записей из входного потока
-    /// и преобразует их в вектор транзакций. Функция читает данные
-    /// до конца потока (EOF) или до первой ошибки парсинга.
+    /// и преобразует их в вектор транзакций. Чтение завершается, когда поток
+    /// заканчивается ровно на границе записи; если данные обрываются внутри
+    /// записи, возвращается ошибка, а не усечённый набор транзакций.
     ///
     /// # Ошибки
     /// * `ParserError::Parse` - нарушен формат записи (магическое число,
-    ///   размеры, значения полей)
+    ///   размеры, значения полей) или запись обрезана
     /// * `ParserError::Validation` - нарушены бизнес-правила транзакции
     ///   ([`Transaction::validate`])
     ///
@@ -60,7 +61,7 @@ impl BinaryParser {
     /// Метод нужен, когда требуется прочитать заведомо некорректные данные
     /// (например, чтобы затем их исправить): проверка [`Transaction::validate`]
     /// пропускается. Проверки формата — магическое число, размеры записи,
-    /// корректность UTF-8 — выполняются всегда.
+    /// корректность UTF-8, целостность (запись не обрезана) — выполняются всегда.
     ///
     /// Положительность суммы бизнес-правилами не проверяется: в бинарном формате
     /// знак суммы кодирует направление движения средств.
@@ -70,12 +71,15 @@ impl BinaryParser {
     }
 
     fn parse_records_impl<R: Read>(
-        mut reader: R,
+        reader: R,
         validate: bool,
     ) -> Result<Vec<Transaction>, ParserError> {
+        let mut reader = ByteCounter::new(reader);
         let mut records = Vec::new();
 
         loop {
+            let bytes_before = reader.bytes_read();
+
             match BinaryRecord::from_read(&mut reader) {
                 Ok(record) => {
                     let transaction: Transaction = record.into();
@@ -88,7 +92,20 @@ impl BinaryParser {
 
                     records.push(transaction);
                 }
-                Err(ParserError::Io(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
+                Err(ParserError::Io(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                    // Ни одного байта следующей записи прочитать не удалось — поток
+                    // закончился ровно на границе записи, это нормальное завершение.
+                    if reader.bytes_read() == bytes_before {
+                        break;
+                    }
+
+                    // Часть записи прочитана: молча терять такие данные нельзя.
+                    return Err(ParserError::Parse(format!(
+                        "Truncated record {}: unexpected end of stream ({} byte(s) read)",
+                        records.len() + 1,
+                        reader.bytes_read() - bytes_before
+                    )));
+                }
                 Err(e) => return Err(e),
             }
         }
@@ -114,6 +131,37 @@ impl BinaryParser {
             binary_record.write_to(writer)?;
         }
         Ok(())
+    }
+}
+
+/// Обёртка над читаемым потоком, подсчитывающая прочитанные байты.
+///
+/// Нужна, чтобы различать нормальный конец потока (не прочитано ни одного байта
+/// следующей записи) и обрыв внутри записи — см. `BinaryParser::parse_records`.
+struct ByteCounter<R> {
+    inner: R,
+    bytes_read: u64,
+}
+
+impl<R: Read> ByteCounter<R> {
+    fn new(inner: R) -> Self {
+        ByteCounter {
+            inner,
+            bytes_read: 0,
+        }
+    }
+
+    /// Количество байтов, прочитанных из потока с момента создания
+    fn bytes_read(&self) -> u64 {
+        self.bytes_read
+    }
+}
+
+impl<R: Read> Read for ByteCounter<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let bytes = self.inner.read(buf)?;
+        self.bytes_read += bytes as u64;
+        Ok(bytes)
     }
 }
 
@@ -931,5 +979,126 @@ mod tests {
         // с включённой проверкой тот же файл отвергается
         let mut cursor = Cursor::new(&buffer);
         assert!(BinaryParser::parse_records(&mut cursor).is_err());
+    }
+
+    /// Записывает две корректные записи и возвращает бинарный буфер.
+    fn write_sample_records() -> Vec<u8> {
+        let transactions = vec![
+            Transaction {
+                tx_id: 1001,
+                tx_type: TransactionType::Deposit,
+                from_user_id: 0,
+                to_user_id: 501,
+                amount: 50000,
+                timestamp: 1672531200000,
+                status: TransactionStatus::Success,
+                description: "First".to_string(),
+            },
+            Transaction {
+                tx_id: 1002,
+                tx_type: TransactionType::Transfer,
+                from_user_id: 501,
+                to_user_id: 502,
+                amount: 15000,
+                timestamp: 1672534800000,
+                status: TransactionStatus::Failure,
+                description: "Second".to_string(),
+            },
+        ];
+
+        let mut buffer = Vec::new();
+        BinaryParser::write_records(&transactions, &mut buffer).unwrap();
+
+        buffer
+    }
+
+    #[test]
+    fn test_parse_records_empty_stream_is_ok() {
+        let mut cursor = Cursor::new(Vec::new());
+        let records = BinaryParser::parse_records(&mut cursor).unwrap();
+
+        assert!(records.is_empty());
+    }
+
+    #[test]
+    fn test_parse_records_clean_eof_is_ok() {
+        let buffer = write_sample_records();
+
+        let mut cursor = Cursor::new(&buffer);
+        let records = BinaryParser::parse_records(&mut cursor).unwrap();
+
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].tx_id, 1001);
+        assert_eq!(records[1].tx_id, 1002);
+    }
+
+    #[test]
+    fn test_parse_records_truncated_record_is_an_error() {
+        let buffer = write_sample_records();
+
+        // Первая запись занимает 46 + 5 = 51 байт, вторая — 46 + 6 = 52 байта
+        let cases = [
+            (30, "Truncated record 1"),               // обрыв первой записи
+            (90, "Truncated record 2"),               // обрыв второй в фиксированной части
+            (buffer.len() - 1, "Truncated record 2"), // обрыв в описании второй записи
+        ];
+
+        for (len, expected) in cases {
+            let mut cursor = Cursor::new(&buffer[..len]);
+
+            match BinaryParser::parse_records(&mut cursor) {
+                Err(ParserError::Parse(msg)) => assert!(
+                    msg.contains(expected),
+                    "для длины {} ожидалось '{}', получено '{}'",
+                    len,
+                    expected,
+                    msg
+                ),
+                other => panic!(
+                    "для длины {} ожидалась ошибка Parse, получено: {:?}",
+                    len, other
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_records_unvalidated_still_rejects_truncated_record() {
+        // Проверка целостности не отключается вместе с бизнес-правилами
+        let buffer = write_sample_records();
+        let mut cursor = Cursor::new(&buffer[..buffer.len() - 1]);
+
+        match BinaryParser::parse_records_unvalidated(&mut cursor) {
+            Err(ParserError::Parse(msg)) => assert!(
+                msg.contains("Truncated record 2"),
+                "unexpected message: {}",
+                msg
+            ),
+            other => panic!("ожидалась ошибка Parse, получено: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_parse_records_trailing_garbage_is_an_error() {
+        let mut buffer = write_sample_records();
+        buffer.push(0x00); // лишний байт после последней записи
+
+        let mut cursor = Cursor::new(&buffer);
+
+        match BinaryParser::parse_records(&mut cursor) {
+            Err(ParserError::Parse(msg)) => {
+                assert!(
+                    msg.contains("Truncated record 3"),
+                    "unexpected message: {}",
+                    msg
+                );
+                assert!(
+                    msg.contains("1 byte(s) read"),
+                    "сообщение должно содержать число прочитанных байтов: {}",
+                    msg
+                );
+            }
+            other => panic!("ожидалась ошибка Parse, получено: {:?}", other),
+        }
     }
 }
