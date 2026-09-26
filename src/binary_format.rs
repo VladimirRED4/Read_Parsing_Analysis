@@ -168,7 +168,6 @@ impl BinaryRecord {
     /// 4. Проверяет статус транзакции
     /// 5. Читает длину описания и само описание в UTF-8
     /// 6. Валидирует размеры и целостность данных
-    /// 7. Нормализует описание (убирает кавычки при необходимости)
     ///
     /// # Аргументы
     ///
@@ -277,8 +276,9 @@ impl BinaryRecord {
     ///    - Описание: переменной длины (до 1 МБ)
     /// 3. **Магическое число**: Должно быть `[0x59, 0x50, 0x42, 0x4E]` ('YPBN')
     /// 4. **Валидация**: Проверяются все поля на корректность и целостность
-    /// 5. **Нормализация описания**: Если описание начинается и заканчивается кавычками,
-    ///    они удаляются. Также обрезаются лишние пробелы.
+    /// 5. **Описание**: возвращается байт-в-байт, как было записано методом
+    ///    [`BinaryRecord::write_to`]. Нормализация (обрезка пробелов, удаление
+    ///    кавычек) не выполняется, поэтому запись → чтение даёт исходное значение.
     ///
     /// # Ограничения
     ///
@@ -375,10 +375,8 @@ impl BinaryRecord {
             reader.read_exact(&mut description_buf)?;
         }
 
-        let mut description = String::from_utf8(description_buf)
+        let description = String::from_utf8(description_buf)
             .map_err(|e| ParserError::Parse(format!("Invalid UTF-8 in description: {}", e)))?;
-
-        description = Self::normalize_description(&description);
 
         Ok(BinaryRecord {
             tx_id,
@@ -392,22 +390,11 @@ impl BinaryRecord {
         })
     }
 
-    fn normalize_description(description: &str) -> String {
-        let trimmed = description.trim();
-
-        // Проверяем длину: одна кавычка одновременно является и началом, и концом
-        // строки, поэтому без этой проверки срез `[1..len - 1]` был бы `[1..0]`
-        // и приводил бы к панике (begin > end).
-        if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
-            trimmed[1..trimmed.len() - 1].to_string()
-        } else {
-            trimmed.to_string()
-        }
-    }
     /// Записывает бинарную запись в указанный поток.
     ///
     /// Преобразует структуру в бинарный формат и записывает её в поток.
     /// Формат соответствует спецификации бинарного формата транзакций.
+    /// Описание записывается байт-в-байт, без кавычек и экранирования.
     ///
     /// # Аргументы
     ///
@@ -782,13 +769,6 @@ mod tests {
     }
 
     #[test]
-    fn test_normalize_description_single_quote() {
-        // Одна кавычка не должна приводить к панике (ранее срез [1..0])
-        assert_eq!(BinaryRecord::normalize_description("\""), "\"");
-        assert_eq!(BinaryRecord::normalize_description("  \"  "), "\"");
-    }
-
-    #[test]
     fn test_binary_record_description_single_quote_roundtrip() {
         let original = BinaryRecord {
             tx_id: 1001,
@@ -809,5 +789,34 @@ mod tests {
 
         assert_eq!(original, parsed);
         assert_eq!(parsed.description, "\"");
+    }
+
+    #[test]
+    fn test_binary_parser_description_fidelity() {
+        // Описание возвращается байт-в-байт: кавычки и краевые пробелы сохраняются
+        let descriptions = ["\"in quotes\"", "\"\"", "a\"b\"c", "  spaces  ", "plain"];
+
+        let transactions: Vec<Transaction> = descriptions
+            .iter()
+            .enumerate()
+            .map(|(i, description)| Transaction {
+                tx_id: i as u64 + 1,
+                tx_type: TransactionType::Deposit,
+                from_user_id: 0,
+                to_user_id: 501,
+                amount: 50000,
+                timestamp: 1672531200000,
+                status: TransactionStatus::Success,
+                description: description.to_string(),
+            })
+            .collect();
+
+        let mut buffer = Vec::new();
+        BinaryParser::write_records(&transactions, &mut buffer).unwrap();
+
+        let mut cursor = Cursor::new(&buffer);
+        let parsed = BinaryParser::parse_records(&mut cursor).unwrap();
+
+        assert_eq!(parsed, transactions);
     }
 }

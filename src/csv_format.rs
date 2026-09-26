@@ -130,12 +130,14 @@ impl CsvParser {
     fn parse_line(line: &str, line_num: usize) -> Result<Vec<String>, ParserError> {
         let mut fields = Vec::new();
         let mut current_field = String::new();
+        let mut current_field_quoted = false;
         let mut in_quotes = false;
         let mut chars = line.chars().peekable();
 
         while let Some(ch) = chars.next() {
             match ch {
                 '"' => {
+                    current_field_quoted = true;
                     if in_quotes {
                         if let Some(&next_ch) = chars.peek() {
                             if next_ch == '"' {
@@ -155,8 +157,9 @@ impl CsvParser {
                     if in_quotes {
                         current_field.push(',');
                     } else {
-                        fields.push(current_field);
+                        fields.push(Self::finish_field(current_field, current_field_quoted));
                         current_field = String::new();
+                        current_field_quoted = false;
                     }
                 }
                 _ => {
@@ -165,7 +168,7 @@ impl CsvParser {
             }
         }
 
-        fields.push(current_field);
+        fields.push(Self::finish_field(current_field, current_field_quoted));
 
         if in_quotes {
             return Err(ParserError::Parse(format!(
@@ -175,6 +178,23 @@ impl CsvParser {
         }
 
         Ok(fields)
+    }
+
+    /// Завершает разбор очередного поля строки.
+    ///
+    /// Кавычки и удвоенные кавычки разбираются в `parse_line` —
+    /// это единственное место, где обрабатывается экранирование. Повторная
+    /// обработка значения приводила к потере данных: например, описание
+    /// `"in quotes"` теряло внешние кавычки, а `""` превращалось в пустую строку.
+    ///
+    /// Содержимое закавыченных полей возвращается как есть (пробелы значимы),
+    /// незакавыченные поля обрезаются от лишних пробелов (` 1001` → `1001`).
+    fn finish_field(value: String, quoted: bool) -> String {
+        if quoted {
+            value
+        } else {
+            value.trim().to_string()
+        }
     }
 
     fn validate_headers(headers: &[String]) -> Result<(), ParserError> {
@@ -279,7 +299,7 @@ impl CsvParser {
             }
         };
 
-        let description = Self::unescape_description(&fields[7]);
+        let description = fields[7].clone();
 
         Self::validate_record(tx_type, from_user_id, to_user_id, amount, line_num)?;
 
@@ -348,20 +368,6 @@ impl CsvParser {
     fn escape_description(description: &str) -> String {
         let escaped = description.replace('"', "\"\"");
         format!("\"{}\"", escaped)
-    }
-
-    fn unescape_description(description: &str) -> String {
-        let trimmed = description.trim();
-
-        // Проверяем длину: одна кавычка одновременно является и началом, и концом
-        // строки, поэтому без этой проверки срез `[1..len - 1]` был бы `[1..0]`
-        // и приводил бы к панике (begin > end).
-        if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
-            let content = &trimmed[1..trimmed.len() - 1];
-            content.replace("\"\"", "\"")
-        } else {
-            trimmed.to_string()
-        }
     }
 }
 
@@ -636,28 +642,41 @@ mod tests {
     }
 
     #[test]
-    fn test_unescape_description() {
-        assert_eq!(CsvParser::unescape_description("\"Simple\""), "Simple");
-        assert_eq!(
-            CsvParser::unescape_description("\"With,comma\""),
-            "With,comma"
-        );
-        assert_eq!(
-            CsvParser::unescape_description("\"With\"\"quote\""),
-            "With\"quote"
-        );
-        assert_eq!(
-            CsvParser::unescape_description("\"With\"\"multiple\"\"quotes\""),
-            "With\"multiple\"quotes"
-        );
-        assert_eq!(CsvParser::unescape_description("No quotes"), "No quotes");
+    fn test_parse_quoted_description_is_not_processed_twice() {
+        // parse_line уже снимает внешние кавычки и раскрывает удвоенные,
+        // повторная обработка значения приводила к потере данных
+        let csv = "TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION\n1001,DEPOSIT,0,501,50000,1672531200000,SUCCESS,\"Simple\"\n1002,DEPOSIT,0,501,50000,1672531200000,SUCCESS,\"With\"\"quote\"\n";
+
+        let parsed = CsvParser::parse_records(Cursor::new(csv)).unwrap();
+
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].description, "Simple");
+        assert_eq!(parsed[1].description, "With\"quote");
     }
 
     #[test]
-    fn test_unescape_description_single_quote() {
-        // Одна кавычка не должна приводить к панике (ранее срез [1..0])
-        assert_eq!(CsvParser::unescape_description("\""), "\"");
-        assert_eq!(CsvParser::unescape_description(" \""), "\"");
+    fn test_parse_quoted_description_keeps_spaces() {
+        let csv = "TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION\n1001,DEPOSIT,0,501,50000,1672531200000,SUCCESS,\"  spaced  \"\n";
+
+        let parsed = CsvParser::parse_records(Cursor::new(csv)).unwrap();
+
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].description, "  spaced  ");
+    }
+
+    #[test]
+    fn test_parse_unquoted_fields_are_trimmed() {
+        // Незакавыченные поля могут содержать лишние пробелы — они обрезаются
+        let csv = "TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION\n 1001 , DEPOSIT , 0 , 501 , 50000 , 1672531200000 , SUCCESS , Unquoted note  \n";
+
+        let parsed = CsvParser::parse_records(Cursor::new(csv)).unwrap();
+
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].tx_id, 1001);
+        assert_eq!(parsed[0].tx_type, TransactionType::Deposit);
+        assert_eq!(parsed[0].status, TransactionStatus::Success);
+        assert_eq!(parsed[0].amount, 50000);
+        assert_eq!(parsed[0].description, "Unquoted note");
     }
 
     #[test]
@@ -767,5 +786,33 @@ mod tests {
 
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0], original);
+    }
+
+    #[test]
+    fn test_roundtrip_descriptions_with_quotes_and_spaces() {
+        // Раньше внешние кавычки и краевые пробелы терялись при чтении
+        let descriptions = ["\"in quotes\"", "\"\"", "a\"b\"c", "  spaces  ", "plain"];
+
+        let transactions: Vec<Transaction> = descriptions
+            .iter()
+            .enumerate()
+            .map(|(i, description)| Transaction {
+                tx_id: i as u64 + 1,
+                tx_type: TransactionType::Deposit,
+                from_user_id: 0,
+                to_user_id: 501,
+                amount: 50000,
+                timestamp: 1672531200000,
+                status: TransactionStatus::Success,
+                description: description.to_string(),
+            })
+            .collect();
+
+        let mut buffer = Vec::new();
+        CsvParser::write_records(&transactions, &mut buffer).unwrap();
+
+        let parsed = CsvParser::parse_records(Cursor::new(&buffer)).unwrap();
+
+        assert_eq!(parsed, transactions);
     }
 }
