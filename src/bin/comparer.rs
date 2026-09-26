@@ -427,7 +427,7 @@ mod tests {
         let empty: Vec<Transaction> = Vec::new();
         let result = compare_transactions(&empty, &empty, &args);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), true);
+        assert!(result.unwrap());
     }
 
     #[test]
@@ -450,7 +450,7 @@ mod tests {
 
         let result = compare_transactions(&list1, &list2, &args);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), false);
+        assert!(!result.unwrap());
     }
 
     #[test]
@@ -473,7 +473,7 @@ mod tests {
 
         let result = compare_transactions(&list1, &list2, &args);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), true);
+        assert!(result.unwrap());
     }
 
     #[test]
@@ -497,6 +497,6 @@ mod tests {
 
         let result = compare_transactions(&list1, &list2, &args);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), false);
+        assert!(!result.unwrap());
     }
 }

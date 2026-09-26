@@ -106,8 +106,6 @@ impl CsvParser {
     /// # Пример
     /// ```
     /// use parser_lib::{CsvParser, Transaction, TransactionType, TransactionStatus};
-    /// use std::fs::File;
-    /// use std::io::BufWriter;
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let transactions = vec![Transaction {
@@ -121,9 +119,11 @@ impl CsvParser {
     ///     description: "Test".to_string(),
     /// }];
     ///
-    /// let file = File::create("output.csv")?;
-    /// let mut writer = BufWriter::new(file);
-    /// CsvParser::write_records(&transactions, &mut writer).unwrap();
+    /// let mut buffer = Vec::new();
+    /// CsvParser::write_records(&transactions, &mut buffer)?;
+    ///
+    /// let output = String::from_utf8(buffer)?;
+    /// assert!(output.contains("1001,DEPOSIT"));
     /// # Ok(())
     /// # }
     /// ```
@@ -391,6 +391,7 @@ impl<W: Write> WriteTo<W> for [CsvTransactions] {
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use std::slice::from_ref;
 
     const VALID_CSV: &str = r#"TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION
 1001,DEPOSIT,0,501,50000,1672531200000,SUCCESS,"Initial account funding"
@@ -729,7 +730,7 @@ mod tests {
         };
 
         let mut buffer = Vec::new();
-        CsvParser::write_records(&[original.clone()], &mut buffer).unwrap();
+        CsvParser::write_records(from_ref(&original), &mut buffer).unwrap();
 
         let csv_output = String::from_utf8(buffer).unwrap();
         println!("CSV output: {}", csv_output);
@@ -774,7 +775,7 @@ mod tests {
         };
 
         let mut buffer = Vec::new();
-        CsvParser::write_records(&[original.clone()], &mut buffer).unwrap();
+        CsvParser::write_records(from_ref(&original), &mut buffer).unwrap();
 
         let cursor = Cursor::new(&buffer);
         let parsed = CsvParser::parse_records(cursor).unwrap();

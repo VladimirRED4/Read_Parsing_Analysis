@@ -78,11 +78,30 @@ pub trait ParseFromRead<R: Read> {
 /// # Типовой параметр
 /// * `W` - Тип записываемого потока, должен реализовывать `Write`
 ///
-/// let mut buffer = Vec::new();
-/// CsvParser::write(&transactions, &mut buffer).unwrap();
+/// # Пример
 ///
-/// let output = String::from_utf8(buffer).unwrap();
+/// ```
+/// use parser_lib::{CsvTransactions, Transaction, TransactionStatus, TransactionType, WriteTo};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let transactions = CsvTransactions(vec![Transaction {
+///     tx_id: 1001,
+///     tx_type: TransactionType::Deposit,
+///     from_user_id: 0,
+///     to_user_id: 501,
+///     amount: 50000,
+///     timestamp: 1672531200000,
+///     status: TransactionStatus::Success,
+///     description: "Initial deposit".to_string(),
+/// }]);
+///
+/// let mut buffer = Vec::new();
+/// transactions.write(&mut buffer)?;
+///
+/// let output = String::from_utf8(buffer)?;
 /// assert!(output.contains("1001,DEPOSIT"));
+/// # Ok(())
+/// # }
 /// ```
 pub trait WriteTo<W: Write> {
     /// Записывает данные в записываемый поток

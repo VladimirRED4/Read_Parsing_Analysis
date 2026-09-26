@@ -139,8 +139,6 @@ impl TextParser {
     /// # Пример
     /// ```
     /// use parser_lib::{TextParser, Transaction, TransactionType, TransactionStatus};
-    /// use std::fs::File;
-    /// use std::io::BufWriter;
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let transactions = vec![Transaction {
@@ -154,9 +152,11 @@ impl TextParser {
     ///     description: "Test".to_string(),
     /// }];
     ///
-    /// let file = File::create("output.txt")?;
-    /// let mut writer = BufWriter::new(file);
-    /// TextParser::write_records(&transactions, &mut writer).unwrap();
+    /// let mut buffer = Vec::new();
+    /// TextParser::write_records(&transactions, &mut buffer)?;
+    ///
+    /// let output = String::from_utf8(buffer)?;
+    /// assert!(output.contains("TX_ID: 1001"));
     /// # Ok(())
     /// # }
     /// ```

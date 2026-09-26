@@ -3,6 +3,7 @@ use parser_lib::{
     TextTransactions, Transaction, TransactionStatus, TransactionType,
 };
 use std::io::Cursor;
+use std::slice::from_ref;
 
 #[test]
 fn test_csv_parsing() {
@@ -52,7 +53,7 @@ fn test_binary_parsing() {
     };
 
     let mut buffer = Vec::new();
-    assert!(BinaryParser::write_records(&[record.clone()], &mut buffer).is_ok());
+    assert!(BinaryParser::write_records(from_ref(&record), &mut buffer).is_ok());
 
     let mut cursor = Cursor::new(&buffer);
     let parsed = BinaryParser::parse_records(&mut cursor);
@@ -76,21 +77,21 @@ fn test_cross_format_roundtrip() {
     };
 
     let mut csv_buffer = Vec::new();
-    CsvParser::write_records(&[original.clone()], &mut csv_buffer).unwrap();
+    CsvParser::write_records(from_ref(&original), &mut csv_buffer).unwrap();
     let csv_cursor = Cursor::new(csv_buffer);
     let csv_result = CsvParser::parse_records(csv_cursor).unwrap();
     assert_eq!(csv_result.len(), 1);
     assert_eq!(csv_result[0].tx_id, original.tx_id);
 
     let mut text_buffer = Vec::new();
-    TextParser::write_records(&[original.clone()], &mut text_buffer).unwrap();
+    TextParser::write_records(from_ref(&original), &mut text_buffer).unwrap();
     let text_cursor = Cursor::new(text_buffer);
     let text_result = TextParser::parse_records(text_cursor).unwrap();
     assert_eq!(text_result.len(), 1);
     assert_eq!(text_result[0].tx_id, original.tx_id);
 
     let mut bin_buffer = Vec::new();
-    BinaryParser::write_records(&[original.clone()], &mut bin_buffer).unwrap();
+    BinaryParser::write_records(from_ref(&original), &mut bin_buffer).unwrap();
     let mut bin_cursor = Cursor::new(bin_buffer);
     let bin_result = BinaryParser::parse_records(&mut bin_cursor).unwrap();
     assert_eq!(bin_result.len(), 1);
@@ -111,17 +112,17 @@ fn test_comparer_functionality() {
     };
 
     let mut csv_buffer = Vec::new();
-    CsvParser::write_records(&[transaction.clone()], &mut csv_buffer).unwrap();
+    CsvParser::write_records(from_ref(&transaction), &mut csv_buffer).unwrap();
     let csv_cursor = Cursor::new(csv_buffer);
     let csv_result = CsvParser::parse_records(csv_cursor).unwrap();
 
     let mut text_buffer = Vec::new();
-    TextParser::write_records(&[transaction.clone()], &mut text_buffer).unwrap();
+    TextParser::write_records(from_ref(&transaction), &mut text_buffer).unwrap();
     let text_cursor = Cursor::new(text_buffer);
     let text_result = TextParser::parse_records(text_cursor).unwrap();
 
     let mut bin_buffer = Vec::new();
-    BinaryParser::write_records(&[transaction.clone()], &mut bin_buffer).unwrap();
+    BinaryParser::write_records(from_ref(&transaction), &mut bin_buffer).unwrap();
     let mut bin_cursor = Cursor::new(bin_buffer);
     let bin_result = BinaryParser::parse_records(&mut bin_cursor).unwrap();
 

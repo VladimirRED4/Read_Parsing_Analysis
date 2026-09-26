@@ -851,7 +851,7 @@ mod tests {
         let mut cursor = Cursor::new(&buffer);
         let result = BinaryRecord::from_read(&mut cursor);
 
-        assert!(matches!(result, Err(_)));
+        assert!(result.is_err());
     }
 
     #[test]

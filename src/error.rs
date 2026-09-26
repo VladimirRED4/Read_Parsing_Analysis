@@ -7,14 +7,19 @@ use std::fmt;
 ///
 /// # Примеры
 ///
-/// ```no run
+/// ```
 /// use parser_lib::ParserError;
 ///
 /// // Создание ошибки парсинга
 /// let parse_error = ParserError::Parse("Некорректный формат TX_ID".to_string());
+/// assert_eq!(parse_error.to_string(), "Parse error: Некорректный формат TX_ID");
 ///
 /// // Создание ошибки валидации
 /// let validation_error = ParserError::Validation("Сумма не может быть отрицательной".to_string());
+/// assert_eq!(
+///     validation_error.to_string(),
+///     "Validation error: Сумма не может быть отрицательной"
+/// );
 /// ```
 #[derive(Debug)]
 pub enum ParserError {
@@ -113,7 +118,7 @@ impl From<std::io::Error> for ParserError {
     ///
     /// # Пример
     ///
-    /// ```no run
+    /// ```no_run
     /// use parser_lib::ParserError;
     /// use std::fs::File;
     ///

@@ -33,15 +33,10 @@ jobs:
       run: cargo fmt --all -- --check
 
     - name: Clippy check
-      run: cargo clippy -- -D warnings
+      run: cargo clippy --all-targets -- -D warnings
 
     - name: Build documentation
-      run: cargo doc --no-deps --document-private-items
-
-    - name: Check documentation warnings
-      run: |
-        # Проверяем, что документация компилируется без ошибок
-        RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items 2>&1 | grep -v "warning: could not parse code block" || true
+      run: RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items
 
     - name: Run doc tests
       run: cargo test --doc --verbose
