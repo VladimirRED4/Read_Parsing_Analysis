@@ -22,7 +22,39 @@ impl CsvParser {
     /// * `Ok(Vec<Transaction>)` - Вектор распарсенных транзакций
     /// * `Err(ParserError)` - Ошибка парсинга или ввода-вывода
     ///
+    /// # Ошибки
+    /// * `ParserError::Parse` - нарушен формат файла (заголовки, поля, значения)
+    /// * `ParserError::Validation` - нарушены бизнес-правила и требование
+    ///   положительной суммы ([`Transaction::validate`],
+    ///   [`Transaction::validate_positive_amount`])
+    ///
     pub fn parse_records<R: Read>(reader: R) -> Result<Vec<Transaction>, ParserError> {
+        Self::parse_records_impl(reader, true)
+    }
+
+    /// Парсит CSV записи транзакций без проверки бизнес-правил
+    ///
+    /// Метод нужен, когда требуется прочитать заведомо некорректные данные
+    /// (например, чтобы затем их исправить): проверки бизнес-правил
+    /// ([`Transaction::validate`]) и положительной суммы
+    /// ([`Transaction::validate_positive_amount`]) пропускаются. Проверки формата
+    /// — заголовки, количество полей, типы значений — выполняются всегда.
+    ///
+    /// # Аргументы
+    /// * `reader` - Читаемый поток (например, файл или буфер)
+    ///
+    /// # Возвращает
+    /// * `Ok(Vec<Transaction>)` - Вектор распарсенных транзакций
+    /// * `Err(ParserError)` - Ошибка парсинга или ввода-вывода
+    ///
+    pub fn parse_records_unvalidated<R: Read>(reader: R) -> Result<Vec<Transaction>, ParserError> {
+        Self::parse_records_impl(reader, false)
+    }
+
+    fn parse_records_impl<R: Read>(
+        reader: R,
+        validate: bool,
+    ) -> Result<Vec<Transaction>, ParserError> {
         let content = std::io::read_to_string(reader).map_err(ParserError::Io)?;
 
         let lines: Vec<&str> = content.lines().collect();
@@ -44,6 +76,17 @@ impl CsvParser {
 
             let fields = Self::parse_line(line, line_num)?;
             let transaction = Self::parse_record(&fields, line_num)?;
+
+            if validate {
+                let context = format!("Line {}", line_num);
+                transaction
+                    .validate()
+                    .map_err(|e| e.with_context(&context))?;
+                transaction
+                    .validate_positive_amount()
+                    .map_err(|e| e.with_context(&context))?;
+            }
+
             records.push(transaction);
         }
 
@@ -301,8 +344,6 @@ impl CsvParser {
 
         let description = fields[7].clone();
 
-        Self::validate_record(tx_type, from_user_id, to_user_id, amount, line_num)?;
-
         Ok(Transaction {
             tx_id,
             tx_type,
@@ -313,56 +354,6 @@ impl CsvParser {
             status,
             description,
         })
-    }
-
-    fn validate_record(
-        tx_type: TransactionType,
-        from_user_id: u64,
-        to_user_id: u64,
-        amount: i64,
-        line_num: usize,
-    ) -> Result<(), ParserError> {
-        if amount <= 0 {
-            return Err(ParserError::Parse(format!(
-                "Line {}: AMOUNT must be positive in CSV format, got {}",
-                line_num, amount
-            )));
-        }
-
-        match tx_type {
-            TransactionType::Deposit => {
-                if from_user_id != 0 {
-                    return Err(ParserError::Parse(format!(
-                        "Line {}: DEPOSIT must have FROM_USER_ID = 0, got {}",
-                        line_num, from_user_id
-                    )));
-                }
-            }
-            TransactionType::Withdrawal => {
-                if to_user_id != 0 {
-                    return Err(ParserError::Parse(format!(
-                        "Line {}: WITHDRAWAL must have TO_USER_ID = 0, got {}",
-                        line_num, to_user_id
-                    )));
-                }
-            }
-            TransactionType::Transfer => {
-                if from_user_id == 0 {
-                    return Err(ParserError::Parse(format!(
-                        "Line {}: TRANSFER cannot have FROM_USER_ID = 0",
-                        line_num
-                    )));
-                }
-                if to_user_id == 0 {
-                    return Err(ParserError::Parse(format!(
-                        "Line {}: TRANSFER cannot have TO_USER_ID = 0",
-                        line_num
-                    )));
-                }
-            }
-        }
-
-        Ok(())
     }
 
     fn escape_description(description: &str) -> String {
@@ -687,7 +678,11 @@ mod tests {
         let cursor = Cursor::new(csv);
         let result = CsvParser::parse_records(cursor);
 
-        assert!(matches!(result, Err(ParserError::Parse(_))));
+        assert!(matches!(result, Err(ParserError::Validation(_))));
+        if let Err(ParserError::Validation(msg)) = result {
+            assert!(msg.contains("positive"), "unexpected message: {}", msg);
+            assert!(msg.contains("Line 2"), "нет контекста строки: {}", msg);
+        }
     }
 
     #[test]
@@ -814,5 +809,49 @@ mod tests {
         let parsed = CsvParser::parse_records(Cursor::new(&buffer)).unwrap();
 
         assert_eq!(parsed, transactions);
+    }
+
+    #[test]
+    fn test_validate_business_rules_with_line_context() {
+        // DEPOSIT с ненулевым FROM_USER_ID нарушает бизнес-правила
+        let csv = "TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION\n1001,DEPOSIT,999,501,50000,1672531200000,SUCCESS,\"Test\"\n";
+
+        let result = CsvParser::parse_records(Cursor::new(csv));
+
+        assert!(matches!(result, Err(ParserError::Validation(_))));
+        if let Err(ParserError::Validation(msg)) = result {
+            assert!(msg.contains("Line 2"), "нет контекста строки: {}", msg);
+            assert!(msg.contains("FROM_USER_ID"), "unexpected message: {}", msg);
+        }
+    }
+
+    #[test]
+    fn test_validate_transfer_to_self() {
+        let csv = "TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION\n1001,TRANSFER,501,501,50000,1672531200000,SUCCESS,\"Test\"\n";
+
+        let result = CsvParser::parse_records(Cursor::new(csv));
+
+        assert!(matches!(result, Err(ParserError::Validation(_))));
+        if let Err(ParserError::Validation(msg)) = result {
+            assert!(
+                msg.contains("FROM_USER_ID != TO_USER_ID"),
+                "unexpected message: {}",
+                msg
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_records_unvalidated_allows_invalid_rules() {
+        let csv = "TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION\n1001,DEPOSIT,999,501,-50000,1672531200000,SUCCESS,\"Invalid\"\n";
+
+        let transactions = CsvParser::parse_records_unvalidated(Cursor::new(csv)).unwrap();
+
+        assert_eq!(transactions.len(), 1);
+        assert_eq!(transactions[0].from_user_id, 999);
+        assert_eq!(transactions[0].amount, -50000);
+
+        // с включённой проверкой тот же ввод отвергается
+        assert!(CsvParser::parse_records(Cursor::new(csv)).is_err());
     }
 }

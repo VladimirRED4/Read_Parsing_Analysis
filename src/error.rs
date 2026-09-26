@@ -48,6 +48,42 @@ pub enum ParserError {
     Conversion(String),
 }
 
+impl ParserError {
+    /// Добавляет к сообщению контекст места, где произошла ошибка.
+    ///
+    /// Парсеры используют метод, чтобы указать номер строки или номер записи,
+    /// к которым относится ошибка разбора или валидации.
+    ///
+    /// Сообщения [`ParserError::Io`] и [`ParserError::UnsupportedFormat`]
+    /// контекста не имеют и возвращаются без изменений.
+    ///
+    /// # Пример
+    ///
+    /// ```
+    /// use parser_lib::ParserError;
+    ///
+    /// let error = ParserError::Validation("AMOUNT must be positive, got -100".to_string())
+    ///     .with_context("Line 2");
+    ///
+    /// assert_eq!(
+    ///     error.to_string(),
+    ///     "Validation error: Line 2: AMOUNT must be positive, got -100"
+    /// );
+    /// ```
+    pub fn with_context(self, context: impl std::fmt::Display) -> Self {
+        match self {
+            ParserError::Parse(msg) => ParserError::Parse(format!("{}: {}", context, msg)),
+            ParserError::Validation(msg) => {
+                ParserError::Validation(format!("{}: {}", context, msg))
+            }
+            ParserError::Conversion(msg) => {
+                ParserError::Conversion(format!("{}: {}", context, msg))
+            }
+            other => other,
+        }
+    }
+}
+
 impl fmt::Display for ParserError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

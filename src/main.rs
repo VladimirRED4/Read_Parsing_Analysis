@@ -1,6 +1,7 @@
 use clap::Parser;
 use parser_lib::{
-    BinaryTransactions, CsvTransactions, ParseFromRead, TextTransactions, Transaction, WriteTo,
+    BinaryParser, BinaryTransactions, CsvParser, CsvTransactions, ParseFromRead, TextParser,
+    TextTransactions, Transaction, WriteTo,
 };
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter};
@@ -36,7 +37,11 @@ struct Args {
     #[arg(short, long, default_value_t = false)]
     verbose: bool,
 
-    #[arg(long, default_value_t = false)]
+    #[arg(
+        long,
+        default_value_t = false,
+        help = "Не проверять бизнес-правила транзакций при чтении"
+    )]
     skip_validation: bool,
 }
 
@@ -133,27 +138,39 @@ fn read_transactions(
     format: &Format,
     skip_validation: bool,
 ) -> Result<Vec<Transaction>, Box<dyn std::error::Error>> {
-    if skip_validation {
-        eprintln!("Предупреждение: проверка бизнес-правил отключена");
-    }
-
     let file = File::open(input_path)?;
     let mut reader = BufReader::new(file);
 
-    match format {
+    if skip_validation {
+        eprintln!(
+            "Предупреждение: проверка бизнес-правил отключена, данные могут быть некорректными"
+        );
+
+        let transactions = match format {
+            Format::Csv => CsvParser::parse_records_unvalidated(&mut reader)?,
+            Format::Txt => TextParser::parse_records_unvalidated(&mut reader)?,
+            Format::Bin => BinaryParser::parse_records_unvalidated(&mut reader)?,
+        };
+
+        return Ok(transactions);
+    }
+
+    let transactions = match format {
         Format::Csv => {
             let csv_transactions: CsvTransactions = ParseFromRead::parse(&mut reader)?;
-            Ok(csv_transactions.0)
+            csv_transactions.0
         }
         Format::Txt => {
             let text_transactions: TextTransactions = ParseFromRead::parse(&mut reader)?;
-            Ok(text_transactions.0)
+            text_transactions.0
         }
         Format::Bin => {
             let bin_transactions: BinaryTransactions = ParseFromRead::parse(&mut reader)?;
-            Ok(bin_transactions.0)
+            bin_transactions.0
         }
-    }
+    };
+
+    Ok(transactions)
 }
 
 fn write_transactions(

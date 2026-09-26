@@ -41,6 +41,10 @@ cargo run --bin ypbank_converter -- --input examples/records_example.bin --input
 
 # CSV -> Binary (обязательно указывать --output)
 cargo run --bin ypbank_converter -- --input examples/records_example.csv --input-format csv --output-format bin --output output.bin
+
+# Конвертация файла, нарушающего бизнес-правила (например, для последующего исправления).
+# Без флага такой файл отвергается с ошибкой валидации.
+cargo run --bin ypbank_converter -- --input examples/records_example.csv --input-format csv --output-format txt --skip-validation
 ```
 
 ### 2. Компаратор файлов (comparer)

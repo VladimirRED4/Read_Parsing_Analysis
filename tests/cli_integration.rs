@@ -128,3 +128,78 @@ fn test_missing_file_error() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("не найден") || stderr.contains("not found"));
 }
+
+#[test]
+fn test_skip_validation_allows_invalid_business_rules() {
+    let binary_path = build_and_get_binary();
+    let temp_dir = TempDir::new().unwrap();
+
+    let csv_path = temp_dir.path().join("invalid.csv");
+    let mut csv_file = File::create(&csv_path).unwrap();
+    writeln!(
+        csv_file,
+        "TX_ID,TX_TYPE,FROM_USER_ID,TO_USER_ID,AMOUNT,TIMESTAMP,STATUS,DESCRIPTION"
+    )
+    .unwrap();
+    // Нарушения бизнес-правил: для DEPOSIT FROM_USER_ID должен быть 0,
+    // а сумма в CSV должна быть положительной
+    writeln!(
+        csv_file,
+        "1001,DEPOSIT,999,501,-50000,1672531200000,SUCCESS,\"Invalid deposit\""
+    )
+    .unwrap();
+
+    // Без флага конвертация падает с ошибкой валидации
+    let failed = Command::new(&binary_path)
+        .args([
+            "--input",
+            csv_path.to_str().unwrap(),
+            "--input-format",
+            "csv",
+            "--output-format",
+            "txt",
+        ])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(!failed.status.success(), "Ожидалась ошибка валидации");
+    let stderr = String::from_utf8_lossy(&failed.stderr);
+    assert!(
+        stderr.contains("FROM_USER_ID"),
+        "Ожидалось сообщение о нарушении бизнес-правила, получено: {}",
+        stderr
+    );
+
+    // С --skip-validation те же данные конвертируются
+    let output_path = temp_dir.path().join("output.txt");
+    let success = Command::new(&binary_path)
+        .args([
+            "--input",
+            csv_path.to_str().unwrap(),
+            "--input-format",
+            "csv",
+            "--output-format",
+            "txt",
+            "--output",
+            output_path.to_str().unwrap(),
+            "--skip-validation",
+        ])
+        .output()
+        .expect("Failed to execute command");
+
+    assert!(
+        success.status.success(),
+        "С --skip-validation конвертация должна пройти: {}",
+        String::from_utf8_lossy(&success.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&success.stderr);
+    assert!(
+        stderr.contains("проверка бизнес-правил отключена"),
+        "Ожидалось предупреждение, получено: {}",
+        stderr
+    );
+
+    let content = fs::read_to_string(&output_path).unwrap();
+    assert!(content.contains("TX_ID: 1001"));
+    assert!(content.contains("AMOUNT: -50000"));
+}

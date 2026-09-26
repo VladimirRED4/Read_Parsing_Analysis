@@ -44,12 +44,50 @@ impl BinaryParser {
     /// Читает последовательность бинарных записей из входного потока
     /// и преобразует их в вектор транзакций. Функция читает данные
     /// до конца потока (EOF) или до первой ошибки парсинга.
-    pub fn parse_records<R: Read>(mut reader: R) -> Result<Vec<Transaction>, ParserError> {
+    ///
+    /// # Ошибки
+    /// * `ParserError::Parse` - нарушен формат записи (магическое число,
+    ///   размеры, значения полей)
+    /// * `ParserError::Validation` - нарушены бизнес-правила транзакции
+    ///   ([`Transaction::validate`])
+    ///
+    pub fn parse_records<R: Read>(reader: R) -> Result<Vec<Transaction>, ParserError> {
+        Self::parse_records_impl(reader, true)
+    }
+
+    /// Парсит транзакции из бинарного потока без проверки бизнес-правил
+    ///
+    /// Метод нужен, когда требуется прочитать заведомо некорректные данные
+    /// (например, чтобы затем их исправить): проверка [`Transaction::validate`]
+    /// пропускается. Проверки формата — магическое число, размеры записи,
+    /// корректность UTF-8 — выполняются всегда.
+    ///
+    /// Положительность суммы бизнес-правилами не проверяется: в бинарном формате
+    /// знак суммы кодирует направление движения средств.
+    ///
+    pub fn parse_records_unvalidated<R: Read>(reader: R) -> Result<Vec<Transaction>, ParserError> {
+        Self::parse_records_impl(reader, false)
+    }
+
+    fn parse_records_impl<R: Read>(
+        mut reader: R,
+        validate: bool,
+    ) -> Result<Vec<Transaction>, ParserError> {
         let mut records = Vec::new();
 
         loop {
             match BinaryRecord::from_read(&mut reader) {
-                Ok(record) => records.push(record.into()),
+                Ok(record) => {
+                    let transaction: Transaction = record.into();
+
+                    if validate {
+                        transaction
+                            .validate()
+                            .map_err(|e| e.with_context(format!("Record {}", records.len() + 1)))?;
+                    }
+
+                    records.push(transaction);
+                }
                 Err(ParserError::Io(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
                 Err(e) => return Err(e),
             }
@@ -818,5 +856,80 @@ mod tests {
         let parsed = BinaryParser::parse_records(&mut cursor).unwrap();
 
         assert_eq!(parsed, transactions);
+    }
+
+    #[test]
+    fn test_validate_business_rules_on_read() {
+        let transaction = Transaction {
+            tx_id: 1001,
+            tx_type: TransactionType::Deposit,
+            from_user_id: 999, // нарушение: для DEPOSIT должно быть 0
+            to_user_id: 501,
+            amount: 50000,
+            timestamp: 1672531200000,
+            status: TransactionStatus::Success,
+            description: "Invalid".to_string(),
+        };
+
+        let mut buffer = Vec::new();
+        BinaryParser::write_records(&[transaction], &mut buffer).unwrap();
+
+        let mut cursor = Cursor::new(&buffer);
+        let result = BinaryParser::parse_records(&mut cursor);
+
+        assert!(matches!(result, Err(ParserError::Validation(_))));
+        if let Err(ParserError::Validation(msg)) = result {
+            assert!(msg.contains("Record 1"), "нет контекста записи: {}", msg);
+            assert!(msg.contains("FROM_USER_ID"), "unexpected message: {}", msg);
+        }
+    }
+
+    #[test]
+    fn test_binary_parser_allows_negative_amount() {
+        // В бинарном формате знак суммы кодирует направление движения средств
+        let transaction = Transaction {
+            tx_id: 1001,
+            tx_type: TransactionType::Transfer,
+            from_user_id: 501,
+            to_user_id: 502,
+            amount: -15000,
+            timestamp: 1672531200000,
+            status: TransactionStatus::Failure,
+            description: "Failed transfer".to_string(),
+        };
+
+        let mut buffer = Vec::new();
+        BinaryParser::write_records(std::slice::from_ref(&transaction), &mut buffer).unwrap();
+
+        let mut cursor = Cursor::new(&buffer);
+        let parsed = BinaryParser::parse_records(&mut cursor).unwrap();
+
+        assert_eq!(parsed, vec![transaction]);
+    }
+
+    #[test]
+    fn test_binary_parse_records_unvalidated_allows_invalid_rules() {
+        let transaction = Transaction {
+            tx_id: 1001,
+            tx_type: TransactionType::Deposit,
+            from_user_id: 999,
+            to_user_id: 0, // двойное нарушение бизнес-правил
+            amount: 50000,
+            timestamp: 1672531200000,
+            status: TransactionStatus::Success,
+            description: "Invalid".to_string(),
+        };
+
+        let mut buffer = Vec::new();
+        BinaryParser::write_records(std::slice::from_ref(&transaction), &mut buffer).unwrap();
+
+        let mut cursor = Cursor::new(&buffer);
+        let parsed = BinaryParser::parse_records_unvalidated(&mut cursor).unwrap();
+
+        assert_eq!(parsed, vec![transaction]);
+
+        // с включённой проверкой тот же файл отвергается
+        let mut cursor = Cursor::new(&buffer);
+        assert!(BinaryParser::parse_records(&mut cursor).is_err());
     }
 }
